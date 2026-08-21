@@ -707,7 +707,8 @@
 - 第 4 步：已完成，按附件三栏工作台结构完成黑色顶部栏、黑色左侧导航、白底内容区、德勤绿交互和可点击浏览视图；网页名称冻结为“外规解读智能体工作台”。
 - 第 5 步：已完成，已冻结 React+Vite、FastAPI、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界。
 - 第 6 步：已完成，已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、API 健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查。
-- 下一步：第 7 步，建立数据库、版本模型、证据模型、任务状态和审计日志模型。
+- 第 7 步：进行中，已建立 SQLAlchemy 领域模型、证据关联表、Alembic 首次迁移，并通过 SQLite 集成测试及迁移升级/回滚验证。
+- 当前下一项：为第 7 步补充真实 PostgreSQL 运行配置和最小任务/法规读写 API，再进入第 8 步权限控制。
 
 1. 冻结机构类型、适用范围、产品边界和发布口径。
 2. 确定验收法规、旧规/新规样本和人工 Gold 标准。
