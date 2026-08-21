@@ -1,10 +1,13 @@
 /**
- * Frontend runtime contract for the future API-backed workbench.
- * The current high-fidelity screen can run without an API; Step 6 will wire
- * these values into the task and evidence data loaders.
+ * Frontend runtime contract for the API-backed workbench.
+ * Set VITE_API_BASE_URL to an origin plus /api, for example:
+ * http://localhost:8000/api
  */
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
+
 export const runtimeConfig = Object.freeze({
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || '/api',
+  apiBaseUrl: configuredApiBaseUrl || '/api',
+  apiConfigured: Boolean(configuredApiBaseUrl),
   environment: import.meta.env.MODE || 'development',
   enableS5: import.meta.env.VITE_ENABLE_S5 === 'true',
 })

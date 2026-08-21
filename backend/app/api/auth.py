@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.api.auth_schemas import LoginRequest, RegisterRequest, SwitchOrganizationRequest, TokenRead, UserRead
+from backend.app.api.organization_schemas import OrganizationRead
 from backend.app.db.models import Organization, OrganizationMember, User
 from backend.app.db.session import get_db
 from backend.app.security import CurrentContext, create_access_token, hash_password, verify_password
@@ -73,6 +74,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
 @router.get("/me", response_model=UserRead)
 def me(context: CurrentContext) -> User:
     return context.user
+
+
+@router.get("/organizations", response_model=list[OrganizationRead])
+def my_organizations(context: CurrentContext, db: Session = Depends(get_db)) -> list[Organization]:
+    return list(
+        db.scalars(
+            select(Organization)
+            .join(OrganizationMember, OrganizationMember.organization_id == Organization.organization_id)
+            .where(OrganizationMember.user_id == context.user.user_id, Organization.is_active.is_(True))
+            .order_by(Organization.created_at)
+        )
+    )
 
 
 @router.post("/switch-organization", response_model=TokenRead)

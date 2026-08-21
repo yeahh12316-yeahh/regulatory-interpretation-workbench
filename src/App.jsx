@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  Building2,
   Bell,
   BookOpen,
   Check,
@@ -15,6 +16,8 @@ import {
   FileText,
   Filter,
   FolderOpen,
+  KeyRound,
+  LogOut,
   MoreVertical,
   Pencil,
   Plus,
@@ -22,8 +25,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  UserRound,
+  Users,
   X,
 } from 'lucide-react'
+import { apiClient } from './lib/api-client'
+import { runtimeConfig } from './lib/runtime-config'
 
 const tasks = [
   {
@@ -71,6 +78,176 @@ const toc = [
   { label: '第五章　附则', open: false },
 ]
 
+const SESSION_STORAGE_KEY = 'regulatory-workbench-session'
+
+function readSession() {
+  try {
+    return JSON.parse(window.localStorage.getItem(SESSION_STORAGE_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
+function demoSession() {
+  return {
+    mode: 'preview',
+    accessToken: '',
+    user: { user_id: 'preview-user', email: 'preview@example.com', display_name: '前端预览用户', is_active: true },
+    organization: { organization_id: 'preview-org', name: '示例机构空间', slug: 'preview-org', is_active: true },
+  }
+}
+
+function persistSession(session) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+}
+
+function AuthScreen({ onAuthenticated, onPreview }) {
+  const [mode, setMode] = useState('login')
+  const [form, setForm] = useState({ email: '', password: '', display_name: '', organization_name: '', organization_slug: '' })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function update(field, value) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    setError('')
+    setBusy(true)
+    try {
+      const payload = mode === 'login'
+        ? { email: form.email, password: form.password }
+        : form
+      const auth = mode === 'login' ? await apiClient.login(payload) : await apiClient.register(payload)
+      const organization = await apiClient.currentOrganization(auth.access_token)
+      const session = { mode: 'api', accessToken: auth.access_token, user: auth.user, organization }
+      persistSession(session)
+      onAuthenticated(session)
+    } catch (requestError) {
+      setError(requestError.message || '无法连接认证服务，请检查后端地址。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <img className="deloitte-logo" src={`${import.meta.env.BASE_URL}assets/deloitte-logo-white.png`} alt="Deloitte" />
+          <span>外规解读智能体工作台</span>
+        </div>
+        <div className="auth-kicker">SECURE WORKSPACE ACCESS</div>
+        <h1>{mode === 'login' ? '登录工作台' : '创建机构空间'}</h1>
+        <p className="auth-description">登录后，任务、法规证据和解读交付物将按机构空间进行隔离。</p>
+        <div className="auth-tabs">
+          <button className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setError('') }}>登录</button>
+          <button className={mode === 'register' ? 'is-active' : ''} onClick={() => { setMode('register'); setError('') }}>注册机构空间</button>
+        </div>
+        <form className="auth-form" onSubmit={submit}>
+          {mode === 'register' && <>
+            <label>姓名<input value={form.display_name} onChange={(event) => update('display_name', event.target.value)} placeholder="例如：张三" required /></label>
+            <label>机构空间名称<input value={form.organization_name} onChange={(event) => update('organization_name', event.target.value)} placeholder="例如：某某金融机构" required /></label>
+            <label>机构空间标识<input value={form.organization_slug} onChange={(event) => update('organization_slug', event.target.value)} placeholder="例如：my-finance-org" pattern="[a-z0-9-]+" required /></label>
+          </>}
+          <label>邮箱<input type="email" value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="name@company.com" required /></label>
+          <label>密码<input type="password" value={form.password} onChange={(event) => update('password', event.target.value)} placeholder="至少 10 位" minLength={mode === 'login' ? 1 : 10} required /></label>
+          {error && <div className="auth-error"><AlertCircle size={15} />{error}</div>}
+          <button className="auth-submit" type="submit" disabled={busy}>{busy ? '正在连接…' : mode === 'login' ? '登录工作台' : '创建并进入工作台'} <ArrowRight size={16} /></button>
+        </form>
+        {!runtimeConfig.apiConfigured && <div className="preview-callout">
+          <div><strong>当前未配置后端地址</strong><span>可先进入前端预览，体验工作台的机构与权限入口。</span></div>
+          <button onClick={onPreview}>进入前端预览</button>
+        </div>}
+        <div className="auth-footer"><KeyRound size={14} /> 认证、机构和角色权限由后端 API 控制</div>
+      </div>
+    </div>
+  )
+}
+
+function AccessPanel({ session, onClose, onSessionChange, onLogout, notify }) {
+  const [organizations, setOrganizations] = useState([session.organization])
+  const [members, setMembers] = useState([])
+  const [memberEmail, setMemberEmail] = useState('')
+  const [memberRole, setMemberRole] = useState('viewer')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (session.mode !== 'api') {
+      setMembers([
+        { member_id: 'preview-member', user_id: 'preview-user', email: session.user.email, display_name: session.user.display_name, role: 'owner' },
+        { member_id: 'preview-reviewer', user_id: 'preview-reviewer', email: 'reviewer@example.com', display_name: '预览复核成员', role: 'reviewer' },
+      ])
+      return
+    }
+    let cancelled = false
+    Promise.all([apiClient.organizations(session.accessToken), apiClient.members(session.accessToken)])
+      .then(([nextOrganizations, nextMembers]) => {
+        if (!cancelled) { setOrganizations(nextOrganizations); setMembers(nextMembers) }
+      })
+      .catch((requestError) => { if (!cancelled) setError(requestError.message) })
+    return () => { cancelled = true }
+  }, [session])
+
+  async function switchOrganization(organization) {
+    if (organization.organization_id === session.organization.organization_id) return
+    if (session.mode !== 'api') {
+      const nextSession = { ...session, organization }
+      persistSession(nextSession)
+      onSessionChange(nextSession)
+      notify(`已切换机构空间：${organization.name}`)
+      return
+    }
+    setBusy(true)
+    try {
+      const auth = await apiClient.switchOrganization(session.accessToken, organization.organization_id)
+      const nextSession = { ...session, accessToken: auth.access_token, user: auth.user, organization }
+      persistSession(nextSession)
+      onSessionChange(nextSession)
+      notify(`已切换机构空间：${organization.name}`)
+    } catch (requestError) { setError(requestError.message) } finally { setBusy(false) }
+  }
+
+  async function addMember(event) {
+    event.preventDefault()
+    if (session.mode !== 'api') { notify('预览模式仅展示成员和角色界面'); return }
+    setBusy(true)
+    try {
+      const member = await apiClient.addMember(session.accessToken, { email: memberEmail, role: memberRole })
+      setMembers((current) => [...current, member])
+      setMemberEmail('')
+      notify('成员已加入当前机构空间')
+    } catch (requestError) { setError(requestError.message) } finally { setBusy(false) }
+  }
+
+  async function updateRole(member, role) {
+    if (session.mode !== 'api') { setMembers((current) => current.map((item) => item.member_id === member.member_id ? { ...item, role } : item)); return }
+    try {
+      const updated = await apiClient.updateMemberRole(session.accessToken, member.member_id, { role })
+      setMembers((current) => current.map((item) => item.member_id === member.member_id ? updated : item))
+      notify('角色已更新')
+    } catch (requestError) { setError(requestError.message) }
+  }
+
+  return <div className="access-overlay" onClick={onClose}>
+    <section className="access-panel" onClick={(event) => event.stopPropagation()}>
+      <div className="access-panel-header"><div><span className="auth-kicker">WORKSPACE CONTROL</span><h2>机构空间与权限</h2></div><IconButton label="关闭机构权限面板" onClick={onClose}><X size={18} /></IconButton></div>
+      {error && <div className="panel-error"><AlertCircle size={15} />{error}</div>}
+      <div className="access-section"><div className="access-section-title"><Building2 size={16} /> 我的机构空间</div>
+        <div className="organization-list">{organizations.map((organization) => <button key={organization.organization_id} className={`organization-item ${organization.organization_id === session.organization.organization_id ? 'is-current' : ''}`} onClick={() => switchOrganization(organization)} disabled={busy}><span>{organization.name}</span><small>{organization.organization_id === session.organization.organization_id ? '当前空间' : '切换'}</small></button>)}</div>
+      </div>
+      <div className="access-section"><div className="access-section-title"><Users size={16} /> 成员与角色 <span>{members.length} 人</span></div>
+        <div className="member-list">{members.map((member) => <div className="member-row" key={member.member_id}><div className="member-avatar"><UserRound size={14} /></div><div className="member-main"><strong>{member.display_name || member.email || member.user_id}</strong><small>{member.email || member.user_id}</small></div><select value={member.role} onChange={(event) => updateRole(member, event.target.value)} disabled={member.role === 'owner'}><option value="owner">所有者</option><option value="admin">管理员</option><option value="editor">编辑者</option><option value="reviewer">复核者</option><option value="viewer">查看者</option></select></div>)}</div>
+        <form className="add-member-form" onSubmit={addMember}><input type="email" value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} placeholder="输入已注册成员邮箱" required /><select value={memberRole} onChange={(event) => setMemberRole(event.target.value)}><option value="viewer">查看者</option><option value="reviewer">复核者</option><option value="editor">编辑者</option><option value="admin">管理员</option></select><button type="submit" disabled={busy}><Plus size={15} /> 添加</button></form>
+      </div>
+      <div className="access-note"><ShieldCheck size={15} /> 任务、法规和证据访问均由当前机构空间及成员角色控制。</div>
+      <button className="logout-button" onClick={onLogout}><LogOut size={15} /> 退出登录</button>
+    </section>
+  </div>
+}
+
 function IconButton({ label, children, onClick, active = false }) {
   return (
     <button className={`icon-button ${active ? 'is-active' : ''}`} aria-label={label} title={label} onClick={onClick}>
@@ -84,6 +261,7 @@ function StatusTag({ children, tone = 'neutral' }) {
 }
 
 function App() {
+  const [session, setSession] = useState(readSession)
   const [query, setQuery] = useState('')
   const [activeTask, setActiveTask] = useState('case-001')
   const [activeTab, setActiveTab] = useState('概览')
@@ -92,6 +270,7 @@ function App() {
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [evidenceItems, setEvidenceItems] = useState(initialEvidence)
   const [toast, setToast] = useState('')
+  const [accessPanelOpen, setAccessPanelOpen] = useState(false)
   const fileInputRef = useRef(null)
 
   const filteredTasks = useMemo(
@@ -102,6 +281,22 @@ function App() {
   function notify(message) {
     setToast(message)
     window.setTimeout(() => setToast(''), 2400)
+  }
+
+  function enterPreview() {
+    const nextSession = demoSession()
+    persistSession(nextSession)
+    setSession(nextSession)
+  }
+
+  function logout() {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY)
+    setSession(null)
+    setAccessPanelOpen(false)
+  }
+
+  if (!session) {
+    return <AuthScreen onAuthenticated={setSession} onPreview={enterPreview} />
   }
 
   function handleEvidenceUpload(event) {
@@ -131,6 +326,11 @@ function App() {
           </div>
         </div>
         <div className="topbar-context">
+          <button className="workspace-switcher" onClick={() => setAccessPanelOpen(true)}>
+            <Building2 size={16} />
+            <span><small>机构空间</small><strong>{session.organization.name}</strong></span>
+            <ChevronDown size={14} />
+          </button>
           <div className="context-field">
             <span className="context-label">机构类型</span>
             <button className="select-button" onClick={() => notify('机构类型选择将在新建任务时生效')}>
@@ -147,6 +347,8 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
+          {session.mode === 'preview' && <StatusTag tone="review">前端预览</StatusTag>}
+          <button className="user-button" onClick={() => setAccessPanelOpen(true)}><span className="user-avatar"><UserRound size={14} /></span>{session.user.display_name}<ChevronDown size={14} /></button>
           <button className="outline-action" onClick={() => notify('报告尚未锁定，暂不能导出 Word')}>
             <FileText size={16} /> 导出 Word <ChevronDown size={14} />
           </button>
@@ -282,6 +484,7 @@ function App() {
       </div>
 
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
+      {accessPanelOpen && <AccessPanel session={session} onClose={() => setAccessPanelOpen(false)} onSessionChange={setSession} onLogout={logout} notify={notify} />}
     </div>
   )
 }
