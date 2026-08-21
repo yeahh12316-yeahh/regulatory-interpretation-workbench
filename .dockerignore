@@ -1,0 +1,9 @@
+.git
+.worktrees
+node_modules
+dist
+.pnpm-store
+tmp
+.env
+__pycache__
+.pytest_cache
