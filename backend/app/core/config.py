@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-change-this-secret-32-bytes-min"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
+    data_dir: str = "/data/regulatory-workbench"
+    private_mode: bool = False
+    private_org_name: str = "私有工作台"
+    private_org_slug: str = "private-workbench"
 
     model_config = SettingsConfigDict(
         env_file=(".env",),

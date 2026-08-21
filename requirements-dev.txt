@@ -2,3 +2,4 @@
 -r worker/requirements.txt
 pytest>=8.3,<9
 httpx>=0.28,<1
+reportlab>=4.0,<5

@@ -21,6 +21,10 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       ENABLE_S5: ${ENABLE_S5:-false}
       ENABLE_OCR_FALLBACK: ${ENABLE_OCR_FALLBACK:-true}
+      PRIVATE_MODE: ${PRIVATE_MODE:-false}
+      DATA_DIR: ${DATA_DIR:-/data/regulatory-workbench}
+      PRIVATE_ORG_NAME: ${PRIVATE_ORG_NAME:-私有工作台}
+      PRIVATE_ORG_SLUG: ${PRIVATE_ORG_SLUG:-private-workbench}
     ports:
       - "8000:8000"
     depends_on:
@@ -28,6 +32,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - api_data:/data/regulatory-workbench
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -85,3 +91,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  api_data:

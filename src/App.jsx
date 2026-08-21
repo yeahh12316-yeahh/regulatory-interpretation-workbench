@@ -13,6 +13,7 @@ import {
   CircleHelp,
   ClipboardCheck,
   ExternalLink,
+  FileUp,
   FileText,
   Filter,
   FolderOpen,
@@ -260,6 +261,70 @@ function StatusTag({ children, tone = 'neutral' }) {
   return <span className={`status-tag status-${tone}`}>{children}</span>
 }
 
+function RegulationImportModal({ session, onClose, onImported }) {
+  const [file, setFile] = useState(null)
+  const [versionLabel, setVersionLabel] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
+
+  async function submit(event) {
+    event.preventDefault()
+    setError('')
+    if (!file) {
+      setError('请先选择法规 PDF')
+      return
+    }
+    if (!runtimeConfig.apiConfigured) {
+      setError('当前前端未配置私有 API 地址；请在私有部署构建时设置 VITE_API_BASE_URL。')
+      return
+    }
+    setBusy(true)
+    try {
+      const nextResult = await apiClient.importRegulation(file, { versionLabel, sourceUrl }, session.accessToken)
+      setResult(nextResult)
+      onImported(nextResult)
+    } catch (requestError) {
+      setError(requestError.message || '法规上传或解析失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <div className="modal-overlay" onClick={onClose}>
+    <section className="regulation-import-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-header">
+        <div><span className="modal-kicker">STEP 9 · INPUT</span><h2>上传法规原文</h2></div>
+        <IconButton label="关闭法规上传" onClick={onClose}><X size={18} /></IconButton>
+      </div>
+      {!result ? <form className="import-form" onSubmit={submit}>
+        <p className="modal-description">上传 PDF 后，系统会保存原文件、计算哈希、提取页面文本、登记法规版本，并把“第×条”原文保存为可定位条款。</p>
+        <label className="file-dropzone">
+          <FileUp size={24} />
+          <strong>{file ? file.name : '选择法规 PDF'}</strong>
+          <span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB · 等待上传` : '仅支持 PDF，单文件不超过 25 MB'}</span>
+          <input type="file" accept="application/pdf,.pdf" onChange={(event) => { setFile(event.target.files?.[0] || null); setError('') }} />
+        </label>
+        <label>版本标签（可选）<input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} placeholder="例如：2017年版" /></label>
+        <label>官方来源地址（可选）<input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://..." /></label>
+        <div className="import-boundary"><strong>本步处理范围</strong><span>文件保存、PDF 解析、版本登记、条款页码/行号定位；不生成 S1—S4 解读。</span></div>
+        {!runtimeConfig.apiConfigured && <div className="import-warning">当前公开预览没有连接后端，不会假装上传成功。私有部署配置 API 后，此按钮才会执行真实登记。</div>}
+        {error && <div className="auth-error"><AlertCircle size={15} />{error}</div>}
+        <div className="modal-actions"><button type="button" className="modal-secondary" onClick={onClose}>取消</button><button type="submit" className="auth-submit" disabled={busy || !file || !runtimeConfig.apiConfigured}>{busy ? '正在上传并解析…' : '上传并登记'}</button></div>
+      </form> : <div className="import-success">
+        <div className="success-mark"><Check size={21} /></div>
+        <h3>法规已登记，条款已生成</h3>
+        <p>{result.regulation.title} · {result.version.version_label}</p>
+        <div className="import-result-grid"><span>原文件</span><strong>{result.source_document.file_name}</strong><span>页数</span><strong>{result.page_count} 页</strong><span>条款</span><strong>{result.article_count} 条</strong><span>哈希</span><strong>{result.source_document.sha256.slice(0, 16)}…</strong></div>
+        {result.warnings?.length > 0 && <div className="import-warning">{result.warnings.join('；')}</div>}
+        <div className="sample-articles"><strong>已生成原文定位</strong>{result.sample_articles.map((article) => <div key={article.article_id}><span>{article.article_no}</span><small>第 {article.source_page} 页 · 行 {article.source_offset.line_start}—{article.source_offset.line_end}</small></div>)}</div>
+        <div className="modal-actions"><button type="button" className="auth-submit" onClick={onClose}>返回工作台</button></div>
+      </div>}
+    </section>
+  </div>
+}
+
 function App() {
   const [session, setSession] = useState(() => readSession() || demoSession())
   const [query, setQuery] = useState('')
@@ -271,6 +336,7 @@ function App() {
   const [evidenceItems, setEvidenceItems] = useState(initialEvidence)
   const [toast, setToast] = useState('')
   const [accessPanelOpen, setAccessPanelOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const fileInputRef = useRef(null)
 
   const filteredTasks = useMemo(
@@ -310,6 +376,32 @@ function App() {
     setSelectedEvidence(nextId)
     notify(`已添加证据：${file.name}`)
     event.target.value = ''
+  }
+
+  function handleRegulationImported(result) {
+    const source = result.source_document
+    const version = result.version
+    const evidenceId = `REG-${source.document_id}`
+    setEvidenceItems((items) => [{
+      id: evidenceId,
+      title: `${result.regulation.title} · ${version.version_label}`,
+      type: '用户上传 PDF',
+      location: `${source.file_name} · 第 1—${result.page_count} 页`,
+      note: `已登记 ${result.article_count} 条款；原文定位已保存，当前不生成 S1—S4 解读。`,
+      tone: 'green',
+      sourceDocumentId: source.document_id,
+      sourcePage: result.sample_articles?.[0]?.source_page || 1,
+    }, ...items])
+    setSelectedEvidence(evidenceId)
+    notify(`已登记法规：${result.article_count} 条款可定位`)
+  }
+
+  function handleEvidenceLocation(item) {
+    setSelectedEvidence(item.id)
+    if (item.sourceDocumentId && runtimeConfig.apiConfigured) {
+      window.open(`${runtimeConfig.apiBaseUrl}/source-documents/${item.sourceDocumentId}/file#page=${item.sourcePage || 1}`, '_blank', 'noopener,noreferrer')
+    }
+    notify(`已定位：${item.location}`)
   }
 
   return (
@@ -361,7 +453,7 @@ function App() {
 
           <div className="task-list-header">
             <span>全部任务（{filteredTasks.length}）</span>
-            <button className="quiet-button" onClick={() => notify('任务排序：最近更新')}><SlidersHorizontal size={14} /></button>
+            <div className="task-list-header-actions"><button className="upload-regulation-button" onClick={() => setImportModalOpen(true)}><FileUp size={13} /> 上传法规</button><button className="quiet-button" aria-label="任务排序" onClick={() => notify('任务排序：最近更新')}><SlidersHorizontal size={14} /></button></div>
           </div>
 
           <div className="task-list">
@@ -464,7 +556,7 @@ function App() {
                   <div><span>来源位置</span><strong>{item.location}</strong></div>
                   <div><span>说明</span><strong>{item.note}</strong></div>
                 </div>
-                <span className="evidence-link" onClick={(event) => { event.stopPropagation(); setSelectedEvidence(item.id); notify(`已定位：${item.location}`) }}>查看定位 <ExternalLink size={13} /></span>
+                <span className="evidence-link" onClick={(event) => { event.stopPropagation(); handleEvidenceLocation(item) }}>查看定位 <ExternalLink size={13} /></span>
               </button>
             ))}
           </div>
@@ -474,6 +566,7 @@ function App() {
 
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
       {accessPanelOpen && <AccessPanel session={session} onClose={() => setAccessPanelOpen(false)} onSessionChange={setSession} onLogout={logout} notify={notify} />}
+      {importModalOpen && <RegulationImportModal session={session} onClose={() => setImportModalOpen(false)} onImported={handleRegulationImported} />}
     </div>
   )
 }
