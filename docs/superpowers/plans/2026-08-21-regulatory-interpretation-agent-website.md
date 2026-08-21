@@ -706,7 +706,8 @@
 - 第 3 步：已完成，信息架构与用户路径已冻结。
 - 第 4 步：已完成，按附件三栏工作台结构完成黑色顶部栏、黑色左侧导航、白底内容区、德勤绿交互和可点击浏览视图；网页名称冻结为“外规解读智能体工作台”。
 - 第 5 步：已完成，已冻结 React+Vite、FastAPI、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界。
-- 下一步：第 6 步，建立代码仓库、后端开发环境、CI、Docker 和健康检查。
+- 第 6 步：基础完成，已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、API 健康检查和 Worker 心跳；Docker 实机启动因当前环境没有 Docker CLI 尚待补验。
+- 下一步：第 7 步，建立数据库、版本模型、证据模型、任务状态和审计日志模型。
 
 1. 冻结机构类型、适用范围、产品边界和发布口径。
 2. 确定验收法规、旧规/新规样本和人工 Gold 标准。
