@@ -14,7 +14,9 @@
 - 条款解读、适用性判断和证据链工作区；
 - 证据上传、定位、目录收起/展开等前端交互。
 
-当前版本不包含真实后端 Agent、数据库、队列、OCR、模型调用和 Word 服务端生成。后续开发会保留当前页面和 API 运行时配置，将演示数据替换为 FastAPI 后端数据，并继续实现法规上传、S1—S4、QC 和报告生成。
+当前仓库现在包含第六步的后端工程骨架：FastAPI API、Celery Worker、PostgreSQL/Redis/MinIO 的 Docker Compose 配置、健康检查和 CI 测试。但它还不是可直接进行真实法规解读的完整 Agent：法规上传、数据库业务模型、OCR、S1—S4、QC、模型 Provider 和 Word 服务端生成将在后续步骤实现。
+
+GitHub Pages 只运行前端；后端需要在具备 Docker 或 Python 运行环境的服务器上启动，并通过 API 地址连接前端。当前 `/health` 和 `/ready` 是工程底座检查接口，不能替代真实解读接口。
 
 ## 本地运行
 
@@ -22,6 +24,18 @@
 pnpm install
 pnpm run dev
 ```
+
+## 启动第六步全栈底座
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- 前端：`http://localhost:8080`
+- API：`http://localhost:8000/health`
+- API 文档：`http://localhost:8000/docs`
+- MinIO 控制台：`http://localhost:9001`
 
 ## 重要说明
 
