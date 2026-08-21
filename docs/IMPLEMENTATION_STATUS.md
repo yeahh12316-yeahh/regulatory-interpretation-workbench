@@ -4,7 +4,7 @@
 
 ## 当前步骤
 
-前六步已完成；第 2 步已按本任务边界完成非 S5 验收材料登记。第 7 步进行中：已建立数据库领域模型和首个 Alembic 迁移；本机仍未安装 Docker CLI。
+前六步已完成；第 2 步已按本任务边界完成非 S5 验收材料登记。第 7 步进行中：已接入 PostgreSQL、自动迁移和任务/法规/来源文件/证据最小读写 API；本机仍未安装 Docker CLI。
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -14,7 +14,7 @@
 | 第 4 步：页面实现与浏览验收 | 已完成 | 已完成黑色顶栏与左侧导航、Deloitte 官方白色 Logo、白底黑字、德勤绿交互、证据上传/定位及浏览器验收，并保存高保真原型图 |
 | 第 5 步：技术架构冻结 | 已完成 | 已冻结 React+Vite 前端、FastAPI API、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界 |
 | 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 已完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查 |
-| 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 进行中 | 已建立 SQLAlchemy 领域模型、SQLite 集成测试、Alembic 首次迁移及迁移升级/回滚验证；尚未接入真实业务 API、PostgreSQL 持久化运行和任务读写服务 |
+| 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 进行中 | 已建立 SQLAlchemy 领域模型、Alembic 首次迁移、PostgreSQL 真实连接、自动迁移和任务/法规/来源文件/证据最小 CRUD API；本次子任务已完成，公网后端部署及前端 API 联动仍待完成 |
 
 ## 第 4 步浏览验收证据
 
@@ -50,7 +50,7 @@
 - CI：`.github/workflows/ci.yml`
 - 测试：`tests/backend/test_health.py`、`tests/worker/test_heartbeat.py`
 - 验证结果：3 个测试通过；Python 编译通过；Compose YAML 解析通过；前端构建通过；GitHub Actions Compose smoke test 通过，已完成 API、Web 健康检查并清理容器。
-- 环境说明：当前本机没有 Docker CLI，因此未在本机执行容器启动；GitHub-hosted Docker 验收已覆盖 Compose 构建、启动、API/Web 健康检查和 teardown。数据库、Redis、MinIO 的业务联通和 Worker 消费逻辑仍属于后续第 7 步及以后开发范围。
+- 环境说明：当前本机没有 Docker CLI，因此未在本机执行容器启动；GitHub-hosted Docker 验收已覆盖 Compose 构建、启动、API/Web 健康检查、PostgreSQL 迁移、CRUD 写入/读取和 teardown。Redis、MinIO 的业务联通和 Worker 消费逻辑仍属于后续开发范围。
 
 ## 第 7 步当前交付
 
@@ -59,4 +59,6 @@
 - Alembic 配置与首个迁移：`alembic.ini`、`backend/migrations/versions/568020acaa60_initial_regulatory_interpretation_schema.py`
 - 已覆盖对象：Task、SourceDocument、Regulation、RegulationVersion、Article、Requirement、Interpretation、Evidence、VersionRelation、QCResult、AuditLog，以及解释/要求与证据关联表。
 - 验证结果：数据库领域模型 SQLite 集成测试通过；Alembic upgrade head、current、downgrade base 通过。
-- 当前边界：2015 年版本仍未提供，S5 不启用；本步只是数据底座，不代表外规解读 Agent 已经可以调用模型生成真实解读。
+- 最小 API：`POST/GET /api/tasks`、`POST/GET /api/regulations`、`POST/GET /api/source-documents`、`POST/GET /api/evidence`；证据写入必须引用已存在的来源文件。
+- 验收结果：GitHub Actions Compose smoke test 已执行 Alembic 迁移、`/ready` PostgreSQL 连通检查，以及任务—法规—来源文件—证据的真实写入/读取链路；[CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32499115706)。
+- 当前边界：2015 年版本仍未提供，S5 不启用；本步不代表外规解读 Agent 已经可以调用模型生成真实解读。
