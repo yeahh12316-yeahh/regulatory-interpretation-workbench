@@ -1,0 +1,4 @@
+-r backend/requirements.txt
+-r worker/requirements.txt
+pytest>=8.3,<9
+httpx>=0.28,<1

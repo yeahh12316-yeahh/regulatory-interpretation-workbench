@@ -23,6 +23,26 @@ pnpm install
 pnpm run dev
 ```
 
+## 第六步完整工程底座
+
+当前工作区已建立本地全栈工程骨架：
+
+```bash
+make test
+make frontend-build
+make compose-config
+make up
+```
+
+启动后：
+
+- 前端：`http://localhost:8080`
+- API：`http://localhost:8000/health`
+- API 文档：`http://localhost:8000/docs`
+- MinIO 控制台：`http://localhost:9001`
+
+第六步只提供可启动的 API/Worker/基础设施底座；法规上传、数据库迁移、OCR、S1—S4、QC 和报告生成在后续步骤实现。
+
 ## 重要说明
 
 - 不要把真实 API Key 写入仓库或前端环境变量。

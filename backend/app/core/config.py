@@ -1,0 +1,25 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    app_env: str = "development"
+    service_name: str = "regulatory-interpretation-api"
+    database_url: str = "postgresql+psycopg://regagent:change-me@postgres:5432/regagent"
+    redis_url: str = "redis://redis:6379/0"
+    celery_broker_url: str = "redis://redis:6379/1"
+    celery_result_backend: str = "redis://redis:6379/2"
+    enable_s5: bool = False
+    enable_ocr_fallback: bool = True
+
+    model_config = SettingsConfigDict(
+        env_file=(".env",),
+        env_prefix="",
+        extra="ignore",
+    )
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
