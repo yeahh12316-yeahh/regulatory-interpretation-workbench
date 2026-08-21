@@ -115,3 +115,45 @@ class EvidenceRead(BaseModel):
     source_url: str | None
     verification_status: str
     created_at: datetime
+
+
+class RegulationVersionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    version_id: str
+    regulation_id: str
+    version_label: str
+    publish_date: date | None
+    effective_date: date | None
+    abolish_date: date | None
+    status: str
+    source_document_id: str
+    previous_version_id: str | None
+    source_sha256: str
+    is_current: bool
+    created_at: datetime
+
+
+class ArticleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    article_id: str
+    version_id: str
+    article_no: str
+    chapter_no: str | None
+    article_order: int
+    original_text: str
+    source_page: int | None
+    source_offset: dict[str, Any]
+    article_type: list[str]
+    interpretation_status: str
+
+
+class RegulationImportRead(BaseModel):
+    source_document: SourceDocumentRead
+    regulation: RegulationRead
+    version: RegulationVersionRead
+    article_count: int
+    page_count: int
+    warnings: list[str]
+    sample_articles: list[ArticleRead]

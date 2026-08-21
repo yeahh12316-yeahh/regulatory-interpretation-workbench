@@ -21,7 +21,7 @@ from backend.app.db.session import get_db
 
 
 ROLE_ORDER = {"viewer": 10, "reviewer": 20, "editor": 30, "admin": 40, "owner": 50}
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -61,6 +61,48 @@ def create_access_token(user_id: str, organization_id: str) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def _private_context(db: Session) -> AuthContext:
+    settings = get_settings()
+    organization = db.scalar(select(Organization).where(Organization.slug == settings.private_org_slug))
+    if organization is None:
+        organization = Organization(
+            organization_id=f"ORG_PRIVATE_{uuid4().hex[:16]}",
+            name=settings.private_org_name,
+            slug=settings.private_org_slug,
+        )
+        db.add(organization)
+        db.flush()
+    user = db.scalar(select(User).where(User.email == "private-workbench@local"))
+    if user is None:
+        user = User(
+            user_id=f"USR_PRIVATE_{uuid4().hex[:16]}",
+            email="private-workbench@local",
+            password_hash=hash_password("private-mode-system-password"),
+            display_name="私有工作台用户",
+        )
+        db.add(user)
+        db.flush()
+    membership = db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == user.user_id,
+            OrganizationMember.organization_id == organization.organization_id,
+        )
+    )
+    if membership is None:
+        membership = OrganizationMember(
+            member_id=f"MEM_PRIVATE_{uuid4().hex[:16]}",
+            organization_id=organization.organization_id,
+            user_id=user.user_id,
+            role="owner",
+        )
+        db.add(membership)
+        db.commit()
+        db.refresh(organization)
+        db.refresh(user)
+        db.refresh(membership)
+    return AuthContext(user=user, organization=organization, membership=membership)
+
+
 @dataclass(frozen=True)
 class AuthContext:
     user: User
@@ -69,9 +111,17 @@ class AuthContext:
 
 
 def get_current_context(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Session = Depends(get_db),
 ) -> AuthContext:
+    if token is None:
+        if get_settings().private_mode:
+            return _private_context(db)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid or expired access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="invalid or expired access token",

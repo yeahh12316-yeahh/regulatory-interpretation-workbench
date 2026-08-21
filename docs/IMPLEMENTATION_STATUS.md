@@ -4,7 +4,7 @@
 
 ## 当前步骤
 
-第 1—8 步已完成；第 9 步尚未开始。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
+第 1—9 步已完成；第 10 步尚未开始。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -16,6 +16,7 @@
 | 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 已完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查 |
 | 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 已完成 | 已建立 SQLAlchemy 领域模型、Alembic 首次迁移、PostgreSQL 真实连接、自动迁移和任务/法规/来源文件/证据最小 CRUD API，并通过本地与 GitHub Compose 验收 |
 | 第 8 步：登录、机构空间、角色权限和任务访问控制 | 后端完成，前端后置 | 后端已实现注册/登录、JWT、当前用户、机构切换、成员管理、角色变更和任务组织隔离；按单团队私有部署目标，第一版前端不设置强制登录和顶部权限控件 |
+| 第 9 步：法规上传、解析、版本登记与原文定位 | 已完成 | 已实现 PDF 上传、原文件哈希与私有存储、标题/文号/日期识别、版本登记、条款拆解、页码/行号定位、原文件访问接口和工作台上传入口 |
 
 ## 第 4 步浏览验收证据
 
@@ -74,4 +75,15 @@
 - 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32500761887)。
 - 前端调整：按单团队内部使用/私有部署目标，第一版直接进入工作台，移除强制登录、机构空间入口、预览用户和顶部权限控件；后端认证和权限代码保留，后续需要多人协同或公网部署时再启用。
 - 布局修复：三栏固定为左侧任务/目录、中间解读、右侧证据链；压缩顶部工具栏最小宽度，避免按钮换行和证据区被挤压。
-- 当前边界：第九步尚未开始，尚未实现法规上传、解析、版本登记和原文定位。
+- 当前边界：第九步已独立完成；第十步尚未开始。
+
+## 第 9 步交付
+
+- 上传接口：`POST /api/regulations/import`，支持 PDF、文件哈希、来源地址、版本标签和可选任务绑定。
+- 解析服务：`backend/app/services/regulation_ingest.py`，使用 `pypdf` 提取页面文本，识别法规标题、文号、发布日期、生效日期、版本标签和“第×条”条款。
+- 版本登记：自动创建 `SourceDocument`、`Regulation`、`RegulationVersion` 和 `Article`；同一法规的现行版本会保留 `previous_version_id`，不会覆盖原版本。
+- 原文定位：每个条款保存 `source_page` 与 `source_offset`（页码、起止行），并提供条款列表、单条查询和原文件访问接口。
+- 私有部署：设置 `PRIVATE_MODE=true` 后，内网单团队可不经过登录页面直接调用 API；公网部署不得开启该模式。
+- 前端入口：左侧任务区新增“上传法规”，未配置 API 时明确禁用真实提交，不伪造上传成功；配置 `VITE_API_BASE_URL` 后进入真实上传/解析结果页。
+- 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32505000085)；公开 Pages 已更新并验证上传入口。
+- 当前边界：第十步尚未开始，不生成 S1—S4 条款解读、监管要求抽取或 AI 结论。
