@@ -1,0 +1,38 @@
+{
+  "case_id": "CASE-001",
+  "status": "READY_FOR_NON_S5_BODY_TEST",
+  "source_required": "用户提供的2017年版4页打印版；本任务不要求2015年版",
+  "source_register": {
+    "new_regulation": {
+      "title": "金融企业呆账核销管理办法（2017年版）",
+      "issuer": "财政部",
+      "document_no": "财金〔2017〕90号",
+      "publish_date": "2017-08-31",
+      "effective_date": "2017-10-01",
+      "official_access_notice": "https://www.mof.gov.cn/bd/mhwzzxly/bgt/202308/t20230814_3902238.htm",
+      "official_fulltext_page": "https://www.cnafc.org/cnafc/front/detail.action?id=819CCA337CD34D6C9A651C4240695741&tag=",
+      "path": "benchmarks/sources/财政部关于印发《金融企业呆账核销管理办法（2017年版）》的通知.pdf",
+      "pages": 4,
+      "sha256": "8bd8290816f7ba9dbba81def4e725fbfccdea984a0f616f2bb00a98a6b8c2da8",
+      "status": "user_provided_association_print_render"
+    },
+    "old_regulation": {
+      "title": "金融企业呆账核销管理办法（2015年修订版）",
+      "document_no": "财金〔2015〕60号",
+      "relation": "direct_previous_version",
+      "status": "not_provided_and_skipped_by_user"
+    }
+  },
+  "regulation": null,
+  "articles": [],
+  "requirements": [],
+  "interpretations": [],
+  "evidence": [],
+  "changes": [],
+  "s5": {
+    "status": "SKIPPED_BY_USER",
+    "changes": [],
+    "note": "用户明确本任务暂不做 S5，不生成新旧规比较结果。"
+  },
+  "note": "本文件用于非S5正文验收的来源与状态占位；附录不在用户提供的4页文件中，附录相关 Gold 不生成。"
+}

@@ -1,0 +1,48 @@
+case_id: CASE-001
+title: 金融企业呆账核销管理办法外规解读闭环
+status: SOURCE_AVAILABLE_S5_SKIPPED
+purpose: 验证法规上传、S1-S5、S4、证据绑定、QC、HTML 和 Word 全流程
+institution_types:
+  - BANK
+  - CONSUMER_FINANCE
+  - FINANCE_COMPANY
+source_documents:
+  new_regulation:
+    path: benchmarks/sources/财政部关于印发《金融企业呆账核销管理办法（2017年版）》的通知.pdf
+    required: true
+    title: 金融企业呆账核销管理办法（2017年版）
+    issuer: 财政部
+    document_no: 财金〔2017〕90号
+    publish_date: 2017-08-31
+    effective_date: 2017-10-01
+    status: 用户已提供官方协会转载页打印版；正文第1—25条可读取
+    official_access_notice: https://www.mof.gov.cn/bd/mhwzzxly/bgt/202308/t20230814_3902238.htm
+    official_fulltext_page: https://www.cnafc.org/cnafc/front/detail.action?id=819CCA337CD34D6C9A651C4240695741&tag=
+    official_mirror_pdf: http://www.hljczt.gov.cn/xxgk/zfxxgkml/bmwj/bmwj_gjjrc/201710/P020171025379784986107.pdf
+    download_status: 已落盘；文件为4页网页打印版，不含附录页
+    sha256: 8bd8290816f7ba9dbba81def4e725fbfccdea984a0f616f2bb00a98a6b8c2da8
+    pages: 4
+  old_regulation:
+    path: null
+    required: false
+    title: 金融企业呆账核销管理办法（2015年修订版）
+    document_no: 财金〔2015〕60号
+    relation: DIRECT_PREVIOUS_VERSION
+    status: 用户未提供；本任务明确跳过 S5
+    evidence: 2017年版第二十五条明确同时废止2015年修订版
+    download_status: 不作为本任务验收输入
+gold_standard:
+  path: benchmarks/gold/case-001.json
+  status: READY_FOR_NON_S5_BODY_TEST
+  reason: 用户已提供2017年版4页打印版，当前可验收正文元数据、第一条至第二十五条和非S5页面；附录不在本次文件中，附录相关结论不得生成
+s5:
+  status: SKIPPED_BY_USER
+  note: 用户未提供2015年版，本任务暂不做S5
+required_assertions:
+  - 法规元数据可回溯到原文
+  - 适用对象和机构类型判断有依据
+  - 条款顺序与原文一致
+  - 应当/不得/可以等规范词不被改变
+  - 条件、例外、日期、比例和期限完整保留
+  - 每条核心解读都绑定证据
+  - HTML 与 Word 内容一致
