@@ -261,7 +261,7 @@ function StatusTag({ children, tone = 'neutral' }) {
 }
 
 function App() {
-  const [session, setSession] = useState(readSession)
+  const [session, setSession] = useState(() => readSession() || demoSession())
   const [query, setQuery] = useState('')
   const [activeTask, setActiveTask] = useState('case-001')
   const [activeTab, setActiveTab] = useState('概览')
@@ -295,10 +295,6 @@ function App() {
     setAccessPanelOpen(false)
   }
 
-  if (!session) {
-    return <AuthScreen onAuthenticated={setSession} onPreview={enterPreview} />
-  }
-
   function handleEvidenceUpload(event) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -326,11 +322,6 @@ function App() {
           </div>
         </div>
         <div className="topbar-context">
-          <button className="workspace-switcher" onClick={() => setAccessPanelOpen(true)}>
-            <Building2 size={16} />
-            <span><small>机构空间</small><strong>{session.organization.name}</strong></span>
-            <ChevronDown size={14} />
-          </button>
           <div className="context-field">
             <span className="context-label">机构类型</span>
             <button className="select-button" onClick={() => notify('机构类型选择将在新建任务时生效')}>
@@ -347,8 +338,6 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          {session.mode === 'preview' && <StatusTag tone="review">前端预览</StatusTag>}
-          <button className="user-button" onClick={() => setAccessPanelOpen(true)}><span className="user-avatar"><UserRound size={14} /></span>{session.user.display_name}<ChevronDown size={14} /></button>
           <button className="outline-action" onClick={() => notify('报告尚未锁定，暂不能导出 Word')}>
             <FileText size={16} /> 导出 Word <ChevronDown size={14} />
           </button>
