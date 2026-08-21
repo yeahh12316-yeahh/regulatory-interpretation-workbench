@@ -44,9 +44,11 @@ jobs:
             api_ok=0
             web_ok=0
             curl -fsS http://localhost:8000/health >/tmp/api-health.json && api_ok=1 || true
+            curl -fsS http://localhost:8000/ready >/tmp/api-ready.json && ready_ok=1 || ready_ok=0
             curl -fsS http://localhost:8080/ >/tmp/web-index.html && web_ok=1 || true
-            if [ "$api_ok" = "1" ] && [ "$web_ok" = "1" ]; then
+            if [ "$api_ok" = "1" ] && [ "$ready_ok" = "1" ] && [ "$web_ok" = "1" ]; then
               grep -q 'regulatory-interpretation-api' /tmp/api-health.json
+              grep -q '"database":"connected"' /tmp/api-ready.json
               grep -q '外规解读智能体工作台' /tmp/web-index.html
               exit 0
             fi
@@ -55,6 +57,22 @@ jobs:
           docker compose ps
           docker compose logs --no-color api worker web
           exit 1
+      - name: Exercise PostgreSQL CRUD API
+        run: |
+          curl -fsS -X POST http://localhost:8000/api/regulations \
+            -H 'content-type: application/json' \
+            -d '{"regulation_id":"CI_REG_001","title":"CI验收法规","issuer":["财政部"]}' >/tmp/regulation.json
+          curl -fsS -X POST http://localhost:8000/api/tasks \
+            -H 'content-type: application/json' \
+            -d '{"task_id":"CI_TASK_001","task_name":"CI验收任务","created_by":"github","regulation_id":"CI_REG_001"}' >/tmp/task.json
+          curl -fsS -X POST http://localhost:8000/api/source-documents \
+            -H 'content-type: application/json' \
+            -d '{"document_id":"CI_DOC_001","task_id":"CI_TASK_001","file_name":"ci.pdf","source_type":"official_pdf","storage_key":"ci/ci.pdf","sha256":"8bd8290816f7ba9dbba81def4e725fbfccdea984a0f616f2bb00a98a6b8c2da8","page_count":1}' >/tmp/source-document.json
+          curl -fsS -X POST http://localhost:8000/api/evidence \
+            -H 'content-type: application/json' \
+            -d '{"evidence_id":"CI_EVID_001","task_id":"CI_TASK_001","regulation_id":"CI_REG_001","source_document_id":"CI_DOC_001","source_type":"official_pdf","locator":{"page":1},"source_text":"CI evidence","verification_status":"verified"}' >/tmp/evidence.json
+          curl -fsS http://localhost:8000/api/evidence/CI_EVID_001 >/tmp/evidence-read.json
+          grep -q '"source_document_id":"CI_DOC_001"' /tmp/evidence-read.json
       - name: Tear down stack
         if: always()
         run: docker compose down -v
