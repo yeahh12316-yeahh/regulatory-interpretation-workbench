@@ -101,6 +101,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--green); out
 h1, h2, h3, p { margin: 0; }
 h1 { color: #292d30; font-size: 18px; font-weight: 700; letter-spacing: -0.015em; }
 .edit-button { height: 34px; font-size: 13px; }
+.content-toolbar-actions { display: inline-flex; align-items: center; gap: 8px; }
+.run-pipeline-button { display: inline-flex; align-items: center; gap: 7px; height: 34px; border: 1px solid var(--green); border-radius: 4px; background: var(--green); color: #17200d; padding: 0 11px; font-size: 12px; font-weight: 750; }
+.run-pipeline-button:hover { background: #9bce39; }
+.run-pipeline-button:disabled, .status-card .link-button:disabled { cursor: wait; opacity: .62; }
 .tab-bar { height: 45px; display: flex; align-items: end; gap: 4px; padding: 0 22px; border-bottom: 1px solid var(--rule); }
 .content-tab { height: 45px; border: 0; border-bottom: 3px solid transparent; background: #fff; color: #666e74; padding: 0 14px; font-size: 13px; }
 .content-tab:hover { color: var(--green-dark); }
@@ -130,6 +134,33 @@ h1 { color: #292d30; font-size: 18px; font-weight: 700; letter-spacing: -0.015em
 .status-card span:first-child { display: block; color: #777f85; font-size: 12px; }
 .status-card strong { display: block; color: #2d3337; margin: 7px 0 10px; font-size: 15px; }
 .status-card .status-tag { font-size: 11px; }
+.status-card .link-button { padding: 0; font-size: 11px; }
+.pipeline-error { display: flex; align-items: center; gap: 7px; border: 1px solid #d8aaaa; background: #fff1f1; color: #9b4040; padding: 9px 11px; margin-bottom: 12px; font-size: 12px; }
+.pipeline-summary { display: grid; gap: 6px; border: 1px solid #b8d397; background: var(--green-soft); color: #40552e; padding: 13px 15px; margin-bottom: 12px; font-size: 12px; line-height: 1.6; }
+.pipeline-summary strong { color: #294115; font-size: 13px; }
+.requirement-list, .interpretation-list { display: grid; gap: 10px; }
+.requirement-card, .interpretation-card { width: 100%; border: 1px solid #dfe3e6; background: #fff; color: var(--ink); padding: 14px 15px; text-align: left; }
+.requirement-card:hover { border-color: #a7c8a0; box-shadow: 0 2px 9px rgba(134, 188, 37, 0.12); }
+.requirement-card-head, .interpretation-card-head { display: flex; align-items: center; gap: 8px; }
+.requirement-card-head span { color: var(--green-dark); font-size: 10px; font-weight: 800; letter-spacing: .05em; }
+.requirement-card-head strong, .interpretation-card-head strong { color: #6d777e; font-size: 11px; font-weight: 600; }
+.requirement-card-head .status-tag, .interpretation-card-head .status-tag { margin-left: auto; }
+.requirement-card p { margin: 10px 0; color: #373e43; font-size: 12px; line-height: 1.65; }
+.requirement-grid { display: grid; grid-template-columns: 68px 1fr 68px 1fr; border-top: 1px solid #edf0f1; font-size: 11px; }
+.requirement-grid span, .requirement-grid strong { min-width: 0; padding: 7px 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.requirement-grid span { color: #8a949a; }
+.requirement-grid strong { color: #59636a; font-weight: 550; }
+.pipeline-more { border: 1px dashed #cfd6da; color: #7b858b; padding: 11px; text-align: center; font-size: 11px; }
+.interpretation-card { display: grid; gap: 10px; }
+.interpretation-card h3 { color: #333b40; font-size: 14px; line-height: 1.5; }
+.interpretation-card > p { color: #59636a; font-size: 12px; line-height: 1.7; }
+.content-blocks { display: grid; gap: 7px; }
+.content-block { display: grid; grid-template-columns: 92px 1fr; gap: 8px; border-top: 1px solid #edf0f1; padding-top: 8px; }
+.content-block span { color: var(--green-dark); font-size: 10px; font-weight: 800; letter-spacing: .06em; }
+.content-block p { color: #68737a; font-size: 11px; line-height: 1.6; }
+.content-fact span { color: #59636a; }
+.content-official span { color: #4d741f; }
+.content-interpretation span { color: #96651f; }
 .core-empty, .clause-card, .compare-block { border: 1px solid #dfe3e6; background: #fff; padding: 43px 26px; text-align: center; }
 .core-empty { color: #7890a5; }
 .core-empty svg { color: var(--green); }

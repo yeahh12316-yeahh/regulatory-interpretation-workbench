@@ -4,7 +4,7 @@
 
 ## 当前步骤
 
-第 1—9 步已完成；第 10 步尚未开始。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
+第 1—10 步已完成。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -17,6 +17,7 @@
 | 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 已完成 | 已建立 SQLAlchemy 领域模型、Alembic 首次迁移、PostgreSQL 真实连接、自动迁移和任务/法规/来源文件/证据最小 CRUD API，并通过本地与 GitHub Compose 验收 |
 | 第 8 步：登录、机构空间、角色权限和任务访问控制 | 后端完成，前端后置 | 后端已实现注册/登录、JWT、当前用户、机构切换、成员管理、角色变更和任务组织隔离；按单团队私有部署目标，第一版前端不设置强制登录和顶部权限控件 |
 | 第 9 步：法规上传、解析、版本登记与原文定位 | 已完成 | 已实现 PDF 上传、原文件哈希与私有存储、标题/文号/日期识别、版本登记、条款拆解、页码/行号定位、原文件访问接口和工作台上传入口 |
+| 第 10 步：S1—S4 真实条款解读流水线 | 已完成 | 已实现 S1 元数据确认、S2 机构适用性、S3 监管要求抽取、S4 整体/逐条解读、Requirement/Interpretation/Evidence 持久化和工作台运行入口；默认规则生成并待人工复核 |
 
 ## 第 4 步浏览验收证据
 
@@ -75,7 +76,7 @@
 - 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32500761887)。
 - 前端调整：按单团队内部使用/私有部署目标，第一版直接进入工作台，移除强制登录、机构空间入口、预览用户和顶部权限控件；后端认证和权限代码保留，后续需要多人协同或公网部署时再启用。
 - 布局修复：三栏固定为左侧任务/目录、中间解读、右侧证据链；压缩顶部工具栏最小宽度，避免按钮换行和证据区被挤压。
-- 当前边界：第九步已独立完成；第十步尚未开始。
+- 当前边界：第十步已完成；第十一步尚未开始。
 
 ## 第 9 步交付
 
@@ -86,4 +87,16 @@
 - 私有部署：设置 `PRIVATE_MODE=true` 后，内网单团队可不经过登录页面直接调用 API；公网部署不得开启该模式。
 - 前端入口：左侧任务区新增“上传法规”，未配置 API 时明确禁用真实提交，不伪造上传成功；配置 `VITE_API_BASE_URL` 后进入真实上传/解析结果页。
 - 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32505000085)；公开 Pages 已更新并验证上传入口。
-- 当前边界：第十步尚未开始，不生成 S1—S4 条款解读、监管要求抽取或 AI 结论。
+- 当前边界：第十步已承接本步登记结果；公开 Pages 未连接后端时不会伪造运行成功。
+
+## 第 10 步交付
+
+- 流水线服务：`backend/app/services/interpretation_pipeline.py`，按 `S1 → S2 → S3 → S4` 顺序执行，S5 因未提供 2015 年核验旧版而明确跳过。
+- S1 元数据确认：输出法规标题、机关、文号、发布日期、生效日期、页数、条款数和待确认字段；缺失文号不会用模型常识补齐。
+- S2 适用性判断：支持机构类型、业务范围、地域和解读时点输入；输出 `DIRECTLY_APPLICABLE` 或 `NEEDS_REVIEW`、匹配阶段、理由和证据要求。
+- S3 监管要求抽取：按条款保存 Requirement，保留主体、行为、对象、条件、例外、频率、时限、阈值、数字表达和原文片段；规则类型固定为 `OBLIGATION`、`PROHIBITION`、`PERMISSION`、`SCOPE`、`OTHER` 等。
+- S4 解读：生成整体解读和逐条解读，每条包含 `FACT`、`OFFICIAL`、`INTERPRETATION` 内容块，绑定 Article/Evidence，状态统一为 `needs_review`，不直接宣称正式结论。
+- API：`POST /api/tasks/{task_id}/interpret`、`GET /api/tasks/{task_id}/interpretation`、`GET /api/tasks/{task_id}/requirements`。
+- 数据库：新增 S1—S4 输出元数据迁移 `backend/migrations/versions/cf7a0d6a10f2_add_pipeline_output_metadata.py`。
+- 前端：工作台新增“运行 S1—S4”入口、流水线状态、适用性判断、结构化监管要求和逐条解读展示；未连接 API 时明确提示，不伪造成功。
+- 当前边界：默认使用规则生成模式；模型 Provider 仍通过环境变量保留可替换接口，QC、人工锁定、异步重跑和正式发布闸门不在第十步内完成。

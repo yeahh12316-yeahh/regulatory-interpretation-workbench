@@ -308,7 +308,7 @@ function RegulationImportModal({ session, onClose, onImported }) {
         </label>
         <label>版本标签（可选）<input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} placeholder="例如：2017年版" /></label>
         <label>官方来源地址（可选）<input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://..." /></label>
-        <div className="import-boundary"><strong>本步处理范围</strong><span>文件保存、PDF 解析、版本登记、条款页码/行号定位；不生成 S1—S4 解读。</span></div>
+        <div className="import-boundary"><strong>本步处理范围</strong><span>本弹窗完成文件保存、PDF 解析、版本登记和条款页码/行号定位；登记后可在工作台运行 S1—S4。</span></div>
         {!runtimeConfig.apiConfigured && <div className="import-warning">当前公开预览没有连接后端，不会假装上传成功。私有部署配置 API 后，此按钮才会执行真实登记。</div>}
         {error && <div className="auth-error"><AlertCircle size={15} />{error}</div>}
         <div className="modal-actions"><button type="button" className="modal-secondary" onClick={onClose}>取消</button><button type="submit" className="auth-submit" disabled={busy || !file || !runtimeConfig.apiConfigured}>{busy ? '正在上传并解析…' : '上传并登记'}</button></div>
@@ -337,6 +337,10 @@ function App() {
   const [toast, setToast] = useState('')
   const [accessPanelOpen, setAccessPanelOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [pipelineTaskId, setPipelineTaskId] = useState(null)
+  const [pipelineResult, setPipelineResult] = useState(null)
+  const [pipelineBusy, setPipelineBusy] = useState(false)
+  const [pipelineError, setPipelineError] = useState('')
   const fileInputRef = useRef(null)
 
   const filteredTasks = useMemo(
@@ -387,13 +391,50 @@ function App() {
       title: `${result.regulation.title} · ${version.version_label}`,
       type: '用户上传 PDF',
       location: `${source.file_name} · 第 1—${result.page_count} 页`,
-      note: `已登记 ${result.article_count} 条款；原文定位已保存，当前不生成 S1—S4 解读。`,
+      note: `已登记 ${result.article_count} 条款；原文定位已保存，可运行 S1—S4 解读。`,
       tone: 'green',
       sourceDocumentId: source.document_id,
       sourcePage: result.sample_articles?.[0]?.source_page || 1,
     }, ...items])
     setSelectedEvidence(evidenceId)
+    setPipelineTaskId(result.task_id || null)
+    setPipelineResult(null)
+    setPipelineError('')
     notify(`已登记法规：${result.article_count} 条款可定位`)
+  }
+
+  async function runPipeline() {
+    if (!runtimeConfig.apiConfigured) {
+      notify('当前公开预览未连接后端，私有部署配置 API 后才能运行 S1—S4')
+      return
+    }
+    if (!pipelineTaskId) {
+      notify('请先上传法规，系统会自动创建解读任务')
+      return
+    }
+    setPipelineBusy(true)
+    setPipelineError('')
+    try {
+      const result = await apiClient.runInterpretation(pipelineTaskId, { institution_type: '商业银行', business_scope: ['呆账核销'], region: '中国境内' }, session?.accessToken)
+      setPipelineResult(result)
+      const evidence = (result.evidence || []).map((item) => ({
+        id: item.evidence_id,
+        title: `${item.locator?.article_no || '条款'} 原文证据`,
+        type: '法规原文证据',
+        location: `${item.source_text?.slice(0, 26) || '原文'} · 第${item.locator?.page || '待确认'}页`,
+        note: item.description || '已绑定到 S1—S4 解读结果，待人工复核。',
+        tone: 'green',
+        sourceDocumentId: item.source_document_id,
+        sourcePage: item.locator?.page || 1,
+      }))
+      setEvidenceItems((items) => [...evidence, ...items.filter((item) => !evidence.some((newItem) => newItem.id === item.id))])
+      notify(`S1—S4 已完成，生成 ${result.requirements.length} 条监管要求，待人工复核`)
+    } catch (requestError) {
+      setPipelineError(requestError.message || 'S1—S4 运行失败')
+      notify(requestError.message || 'S1—S4 运行失败')
+    } finally {
+      setPipelineBusy(false)
+    }
   }
 
   function handleEvidenceLocation(item) {
@@ -511,7 +552,10 @@ function App() {
                 <h1>金融企业呆账核销管理办法（2017年版）</h1>
               </div>
             </div>
-            <button className="edit-button" onClick={() => notify('元数据编辑将在任务创建流程中开放')}><Pencil size={15} /> 编辑元数据</button>
+            <div className="content-toolbar-actions">
+              <button className="run-pipeline-button" onClick={runPipeline} disabled={pipelineBusy}><Sparkles size={15} /> {pipelineBusy ? '正在运行 S1—S4…' : '运行 S1—S4'}</button>
+              <button className="edit-button" onClick={() => notify('元数据编辑将在任务创建流程中开放')}><Pencil size={15} /> 编辑元数据</button>
+            </div>
           </div>
 
           <div className="tab-bar" role="tablist" aria-label="解读内容标签">
@@ -530,9 +574,10 @@ function App() {
               <StatusTag tone="green">新规已载入</StatusTag>
             </section>
 
-            {activeTab === '概览' && <Overview onEvidence={(id) => setSelectedEvidence(id)} />}
-            {activeTab === '核心要求' && <CoreRequirements onEvidence={(id) => setSelectedEvidence(id)} />}
-            {activeTab === '条款解读' && <ClauseInterpretation onEvidence={(id) => setSelectedEvidence(id)} />}
+            {pipelineError && <div className="pipeline-error"><AlertCircle size={15} />{pipelineError}</div>}
+            {activeTab === '概览' && <Overview onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} onRun={runPipeline} pipelineBusy={pipelineBusy} />}
+            {activeTab === '核心要求' && <CoreRequirements onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} />}
+            {activeTab === '条款解读' && <ClauseInterpretation onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} />}
           </div>
         </main>
 
@@ -575,7 +620,10 @@ function SectionTitle({ children, action }) {
   return <div className="section-title"><span className="section-bar" /><h2>{children}</h2>{action}</div>
 }
 
-function Overview({ onEvidence }) {
+function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
+  const applicability = pipelineResult?.stages?.S2?.output
+  const requirements = pipelineResult?.stages?.S3?.output
+  const s4 = pipelineResult?.stages?.S4?.output
   return (
     <>
       <section>
@@ -595,8 +643,8 @@ function Overview({ onEvidence }) {
         <SectionTitle>适用性判断</SectionTitle>
         <div className="data-table applicability-table">
           <div className="data-cell label">判断维度</div><div className="data-cell label">结论</div><div className="data-cell label">说明</div>
-          <div className="data-cell">主体适用性</div><div className="data-cell"><StatusTag tone="review">待确认</StatusTag></div><div className="data-cell">基于当前文件正文初步判断；涉及附件和具体机构边界时需人工确认。</div>
-          <div className="data-cell">地域适用性</div><div className="data-cell"><StatusTag tone="green">初步适用</StatusTag></div><div className="data-cell">当前文件明确面向中华人民共和国境内依法设立的金融企业。</div>
+          <div className="data-cell">主体适用性</div><div className="data-cell"><StatusTag tone={applicability?.status === 'DIRECTLY_APPLICABLE' ? 'green' : 'review'}>{applicability?.status === 'DIRECTLY_APPLICABLE' ? '直接适用' : '待确认'}</StatusTag></div><div className="data-cell">{applicability?.reason || '基于当前文件正文初步判断；涉及附件和具体机构边界时需人工确认。'}</div>
+          <div className="data-cell">地域适用性</div><div className="data-cell"><StatusTag tone={applicability?.matching_stage?.regional_temporal_match ? 'green' : 'review'}>{applicability?.matching_stage?.regional_temporal_match ? '初步适用' : '待确认'}</StatusTag></div><div className="data-cell">{applicability ? `当前任务地域：${applicability.region || '未指定'}。` : '当前文件明确面向中华人民共和国境内依法设立的金融企业。'}</div>
           <div className="data-cell">版本比较</div><div className="data-cell"><StatusTag tone="neutral">暂不启用</StatusTag></div><div className="data-cell">用户未提供 2015 年版，本任务不执行 S5。</div>
         </div>
       </section>
@@ -604,17 +652,33 @@ function Overview({ onEvidence }) {
       <section>
         <SectionTitle action={<button className="section-action" onClick={() => onEvidence('E-01')}>查看证据 <ExternalLink size={13} /></button>}>解读状态</SectionTitle>
         <div className="status-grid">
-          <div className="status-card"><span>法规识别</span><strong>已定位</strong><StatusTag tone="green">来源登记完成</StatusTag></div>
-          <div className="status-card"><span>条款拆解</span><strong>待解析</strong><StatusTag tone="review">下一节点</StatusTag></div>
+          <div className="status-card"><span>法规识别 · S1</span><strong>{pipelineResult ? '已完成' : '已定位'}</strong><StatusTag tone="green">{pipelineResult ? '元数据确认' : '来源登记完成'}</StatusTag></div>
+          <div className="status-card"><span>适用性 · S2</span><strong>{applicability?.status === 'DIRECTLY_APPLICABLE' ? '直接适用' : pipelineResult ? '待确认' : '待运行'}</strong><StatusTag tone={applicability?.status === 'DIRECTLY_APPLICABLE' ? 'green' : 'review'}>{applicability?.confidence || '等待判断'}</StatusTag></div>
+          <div className="status-card"><span>规则抽取 · S3</span><strong>{requirements ? `${requirements.requirement_count} 条` : '待解析'}</strong><StatusTag tone={requirements ? 'green' : 'review'}>{requirements ? '已结构化' : '下一节点'}</StatusTag></div>
+          <div className="status-card"><span>条款解读 · S4</span><strong>{s4 ? `${s4.article_interpretation_count} 条` : '待生成'}</strong><StatusTag tone={s4 ? 'review' : 'neutral'}>{s4 ? '待人工复核' : '未运行'}</StatusTag></div>
           <div className="status-card"><span>版本比较</span><strong>暂不启用</strong><StatusTag tone="neutral">本任务跳过</StatusTag></div>
-          <div className="status-card"><span>质量检查</span><strong>待确认</strong><StatusTag tone="review">不可发布</StatusTag></div>
+          <div className="status-card"><span>流水线操作</span><strong>{pipelineResult ? '可复核' : '未运行'}</strong><button className="link-button" onClick={onRun} disabled={pipelineBusy}>{pipelineBusy ? '运行中…' : '运行 S1—S4'} <ArrowRight size={15} /></button></div>
         </div>
       </section>
     </>
   )
 }
 
-function CoreRequirements({ onEvidence }) {
+function CoreRequirements({ onEvidence, pipelineResult }) {
+  if (pipelineResult) {
+    return <section>
+      <SectionTitle>核心要求（S3）</SectionTitle>
+      <div className="pipeline-summary"><strong>已结构化 {pipelineResult.requirements.length} 条监管要求</strong><span>每条要求保留原文片段、责任主体、行为、条件、例外、时限和数字线索。</span></div>
+      <div className="requirement-list">
+        {pipelineResult.requirements.slice(0, 24).map((requirement) => <button className="requirement-card" key={requirement.requirement_id} onClick={() => onEvidence(pipelineResult.evidence.find((item) => item.article_id === requirement.article_id)?.evidence_id)}>
+          <div className="requirement-card-head"><span>{requirement.rule_type}</span><strong>{requirement.article_id}</strong><StatusTag tone="review">待复核</StatusTag></div>
+          <p>{requirement.source_text}</p>
+          <div className="requirement-grid"><span>主体</span><strong>{requirement.subject || '待确认'}</strong><span>行为</span><strong>{requirement.action || '未识别'}</strong><span>条件/例外</span><strong>{[requirement.condition, requirement.exception].filter(Boolean).join('；') || '未识别'}</strong><span>数字/时限</span><strong>{[requirement.deadline, requirement.frequency, requirement.threshold].filter(Boolean).join('；') || (requirement.structured_data?.numbers || []).map((item) => item.original_expression).join('、') || '未识别'}</strong></div>
+        </button>)}
+        {pipelineResult.requirements.length > 24 && <div className="pipeline-more">当前页面展示前 24 条；完整结果已保存在后端，可通过任务 API 查询。</div>}
+      </div>
+    </section>
+  }
   return (
     <section>
       <SectionTitle>核心要求</SectionTitle>
@@ -628,7 +692,23 @@ function CoreRequirements({ onEvidence }) {
   )
 }
 
-function ClauseInterpretation({ onEvidence }) {
+function ClauseInterpretation({ onEvidence, pipelineResult }) {
+  if (pipelineResult) {
+    const articleInterpretations = pipelineResult.article_interpretations.slice(0, 12)
+    return <section>
+      <SectionTitle>条款解读（S4）</SectionTitle>
+      <div className="pipeline-summary"><strong>整体解读已生成，当前状态：待人工复核</strong><span>{pipelineResult.overall.interpretation}</span></div>
+      <div className="interpretation-list">
+        {articleInterpretations.map((item) => <article className="interpretation-card" key={item.interpretation_id}>
+          <div className="interpretation-card-head"><strong>{item.article_id}</strong><StatusTag tone="review">待人工复核</StatusTag></div>
+          <h3>{item.summary}</h3>
+          <p>{item.interpretation}</p>
+          <div className="content-blocks">{item.content_blocks.map((block) => <div key={block.label} className={`content-block content-${block.label.toLowerCase()}`}><span>{block.label}</span><p>{block.text}</p></div>)}</div>
+          <button className="link-button" onClick={() => onEvidence(item.content_blocks?.[0]?.evidence_ids?.[0])}>查看原文证据 <ExternalLink size={13} /></button>
+        </article>)}
+      </div>
+    </section>
+  }
   return (
     <section>
       <SectionTitle>条款解读</SectionTitle>

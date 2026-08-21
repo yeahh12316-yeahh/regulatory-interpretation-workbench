@@ -150,6 +150,7 @@ class ArticleRead(BaseModel):
 
 
 class RegulationImportRead(BaseModel):
+    task_id: str | None = None
     source_document: SourceDocumentRead
     regulation: RegulationRead
     version: RegulationVersionRead
@@ -157,3 +158,79 @@ class RegulationImportRead(BaseModel):
     page_count: int
     warnings: list[str]
     sample_articles: list[ArticleRead]
+
+
+class PipelineRunRequest(BaseModel):
+    institution_type: str = Field(default="商业银行", min_length=1, max_length=128)
+    business_scope: list[str] = Field(default_factory=list)
+    region: str | None = Field(default="中国境内", max_length=128)
+    interpretation_as_of: str | None = Field(default=None, max_length=32)
+
+
+class RequirementRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    requirement_id: str
+    article_id: str
+    subject: str | None
+    rule_type: str
+    action: str | None
+    object: str | None
+    condition: str | None
+    deadline: str | None
+    frequency: str | None
+    threshold: str | None
+    exception: str | None
+    evidence_required: str | None
+    related_articles: list[str]
+    source_text: str
+    confidence: float | None
+    fact_class: str
+    review_status: str
+    structured_data: dict[str, Any]
+    pipeline_run_id: str | None
+
+
+class InterpretationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    interpretation_id: str
+    regulation_id: str
+    article_id: str | None
+    summary: str | None
+    interpretation: str | None
+    regulatory_meaning: str | None
+    key_points: list[str]
+    conditions: list[str]
+    exceptions: list[str]
+    linked_requirements: list[str]
+    content_type: str
+    confidence: float | None
+    review_status: str
+    fact_class: str
+    content_blocks: list[dict[str, Any]]
+    generated_by: str
+    prompt_version: str | None
+    human_lock: bool
+    content_version: int
+    pipeline_run_id: str | None
+
+
+class PipelineStageRead(BaseModel):
+    status: str
+    version: int | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    output: dict[str, Any] = Field(default_factory=dict)
+    reason: str | None = None
+
+
+class PipelineRunRead(BaseModel):
+    pipeline_run_id: str
+    pipeline_version: str
+    task: TaskRead
+    stages: dict[str, Any]
+    overall: InterpretationRead
+    article_interpretations: list[InterpretationRead]
+    requirements: list[RequirementRead]
+    evidence: list[EvidenceRead]
