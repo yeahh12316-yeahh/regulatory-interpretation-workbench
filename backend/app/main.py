@@ -5,6 +5,7 @@ from backend.app.api.health import router as health_router
 from backend.app.api.auth import router as auth_router
 from backend.app.api.organization import router as organization_router
 from backend.app.api.ingest import router as ingest_router
+from backend.app.api.pipeline import router as pipeline_router
 
 
 app = FastAPI(
@@ -17,6 +18,7 @@ app.include_router(crud_router)
 app.include_router(auth_router)
 app.include_router(organization_router)
 app.include_router(ingest_router)
+app.include_router(pipeline_router)
 
 
 @app.get("/")

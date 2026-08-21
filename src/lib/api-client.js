@@ -37,4 +37,7 @@ export const apiClient = {
   },
   articles: (regulationId, versionId, token) => request(`/regulations/${regulationId}/versions/${versionId}/articles`, {}, token),
   article: (articleId, token) => request(`/articles/${articleId}`, {}, token),
+  runInterpretation: (taskId, body, token) => request(`/tasks/${taskId}/interpret`, { method: 'POST', body: JSON.stringify(body) }, token),
+  interpretation: (taskId, token) => request(`/tasks/${taskId}/interpretation`, {}, token),
+  requirements: (taskId, token) => request(`/tasks/${taskId}/requirements`, {}, token),
 }

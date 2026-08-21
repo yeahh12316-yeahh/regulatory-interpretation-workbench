@@ -76,7 +76,17 @@ async def import_regulation(
             storage_path.unlink(missing_ok=True)
             raise HTTPException(status_code=404, detail="task not found")
     else:
-        task = None
+        task = Task(
+            task_id=_id("TASK"),
+            task_name=f"{parsed.title or file.filename or '法规'} 解读",
+            created_by=context.user.email,
+            organization_id=context.organization.organization_id,
+            owner_id=context.user.user_id,
+            task_status="created",
+        )
+        db.add(task)
+        db.flush()
+        task_id = task.task_id
 
     document = SourceDocument(
         document_id=document_id,
@@ -178,6 +188,7 @@ async def import_regulation(
 
     sample = [ArticleRead.model_validate(article) for article in articles[:3]]
     return RegulationImportRead(
+        task_id=task.task_id if task is not None else None,
         source_document=document,
         regulation=regulation,
         version=version,

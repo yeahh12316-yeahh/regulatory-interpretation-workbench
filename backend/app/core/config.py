@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     private_mode: bool = False
     private_org_name: str = "私有工作台"
     private_org_slug: str = "private-workbench"
+    llm_provider: str = "rule_based"
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: int = 120
 
     model_config = SettingsConfigDict(
         env_file=(".env",),
