@@ -126,7 +126,7 @@ function App() {
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-stack">
-            <img className="deloitte-logo" src="/assets/deloitte-logo-white.png" alt="Deloitte" />
+            <img className="deloitte-logo" src={`${import.meta.env.BASE_URL}assets/deloitte-logo-white.png`} alt="Deloitte" />
             <span className="brand-name">外规解读智能体工作台</span>
           </div>
         </div>
