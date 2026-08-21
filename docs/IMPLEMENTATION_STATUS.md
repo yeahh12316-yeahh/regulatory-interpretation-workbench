@@ -4,7 +4,7 @@
 
 ## 当前步骤
 
-当前完成到第 6 步的工程底座；第 2 步已按本任务边界完成非 S5 验收材料登记；第 6 步的 Docker 实机启动仍待具备 Docker Runtime 后补验。
+前六步已完成；第 2 步已按本任务边界完成非 S5 验收材料登记。第 6 步已通过 GitHub Actions 的真实 Docker Compose 构建、启动、健康检查和清理验收；本机仍未安装 Docker CLI。
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -13,7 +13,7 @@
 | 第 3 步：信息架构和流程 | 已完成 | 顶部栏、左侧任务/目录、中间解读、右侧证据链 |
 | 第 4 步：页面实现与浏览验收 | 已完成 | 已完成黑色顶栏与左侧导航、Deloitte 官方白色 Logo、白底黑字、德勤绿交互、证据上传/定位及浏览器验收，并保存高保真原型图 |
 | 第 5 步：技术架构冻结 | 已完成 | 已冻结 React+Vite 前端、FastAPI API、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界 |
-| 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 基础完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；Python 测试、Compose YAML、前端构建已通过，Docker CLI 未安装，容器实机启动待补验 |
+| 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 已完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查 |
 
 ## 第 4 步浏览验收证据
 
@@ -48,5 +48,5 @@
 - Docker 编排：`docker-compose.yml`
 - CI：`.github/workflows/ci.yml`
 - 测试：`tests/backend/test_health.py`、`tests/worker/test_heartbeat.py`
-- 验证结果：3 个测试通过；Python 编译通过；Compose YAML 解析通过；前端构建通过。
-- 待补验：当前环境没有 Docker CLI，尚未执行真实容器启动、PostgreSQL/Redis/MinIO 联通和 Worker 消费测试。
+- 验证结果：3 个测试通过；Python 编译通过；Compose YAML 解析通过；前端构建通过；GitHub Actions Compose smoke test 通过，已完成 API、Web 健康检查并清理容器。
+- 环境说明：当前本机没有 Docker CLI，因此未在本机执行容器启动；GitHub-hosted Docker 验收已覆盖 Compose 构建、启动、API/Web 健康检查和 teardown。数据库、Redis、MinIO 的业务联通和 Worker 消费逻辑仍属于后续第 7 步及以后开发范围。

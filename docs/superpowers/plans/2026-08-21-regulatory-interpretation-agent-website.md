@@ -6,7 +6,7 @@
 
 **Architecture:** 采用前后端分离的可部署架构。前端负责任务创建、过程状态和结果阅读；后端负责文件、任务、数据和权限；后台 Worker 负责文档解析、S1–S4、证据绑定和 QC。原始法规文本不可变，所有 AI 结果必须带版本、来源和证据定位。
 
-**Tech Stack:** 默认使用 Next.js + TypeScript 前端、FastAPI + Python 后端、PostgreSQL、Redis 队列、S3 兼容文件存储、Docker Compose；模型通过可替换的 OpenAI-compatible Provider Adapter 调用，所有密钥仅通过环境变量注入。
+**Tech Stack:** 已冻结为 React + Vite 前端、FastAPI + Python 后端、PostgreSQL、Redis 队列、S3 兼容文件存储、Docker Compose；模型通过可替换的 OpenAI-compatible Provider Adapter 调用，所有密钥仅通过环境变量注入。
 
 **Spec:** `外规解读 Agent Handoff Document v1.0.md`、`外规解读 Agent v2.0 开发规格.md`、`外规解读 Agent Data Schema v1.0.md`、`外规解读 Agent API Specification v1.0.md`、`外规解读 Agent MVP开发计划与实施路线图 v1.0.md`。
 
@@ -706,7 +706,7 @@
 - 第 3 步：已完成，信息架构与用户路径已冻结。
 - 第 4 步：已完成，按附件三栏工作台结构完成黑色顶部栏、黑色左侧导航、白底内容区、德勤绿交互和可点击浏览视图；网页名称冻结为“外规解读智能体工作台”。
 - 第 5 步：已完成，已冻结 React+Vite、FastAPI、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界。
-- 第 6 步：基础完成，已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、API 健康检查和 Worker 心跳；Docker 实机启动因当前环境没有 Docker CLI 尚待补验。
+- 第 6 步：已完成，已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、API 健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查。
 - 下一步：第 7 步，建立数据库、版本模型、证据模型、任务状态和审计日志模型。
 
 1. 冻结机构类型、适用范围、产品边界和发布口径。
