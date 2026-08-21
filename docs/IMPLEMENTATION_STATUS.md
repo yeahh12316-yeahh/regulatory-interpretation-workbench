@@ -15,7 +15,7 @@
 | 第 5 步：技术架构冻结 | 已完成 | 已冻结 React+Vite 前端、FastAPI API、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界 |
 | 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 已完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查 |
 | 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 已完成 | 已建立 SQLAlchemy 领域模型、Alembic 首次迁移、PostgreSQL 真实连接、自动迁移和任务/法规/来源文件/证据最小 CRUD API，并通过本地与 GitHub Compose 验收 |
-| 第 8 步：登录、机构空间、角色权限和任务访问控制 | 已完成 | 后端已实现注册/登录、JWT、当前用户、机构切换、成员管理、角色变更和任务组织隔离；前端已接入登录/注册入口、前端预览模式、机构空间面板、成员角色管理和退出登录 |
+| 第 8 步：登录、机构空间、角色权限和任务访问控制 | 后端完成，前端后置 | 后端已实现注册/登录、JWT、当前用户、机构切换、成员管理、角色变更和任务组织隔离；按单团队私有部署目标，第一版前端不设置强制登录和顶部权限控件 |
 
 ## 第 4 步浏览验收证据
 
@@ -72,6 +72,6 @@
 - 数据迁移：`backend/migrations/versions/b2f3fd094106_add_organizations_users_memberships_and_.py`
 - 已验证：注册、登录、JWT Bearer 认证、多机构切换、成员添加、角色升级、viewer 只读、editor 可创建任务、跨机构任务不可见。
 - 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32500761887)。
-- 前端交付：`src/App.jsx`、`src/lib/api-client.js`、`src/lib/runtime-config.js` 已接入登录/注册、JWT 会话、机构空间入口、成员角色面板和退出登录；未配置 `VITE_API_BASE_URL` 时明确显示前端预览模式，不冒充真实后端登录。
-- 浏览器验收：`http://127.0.0.1:5175/` 已验证“登录页 → 进入前端预览 → 打开机构空间 → 角色复核者切换为编辑者 → 退出登录”；控制台无错误。
+- 前端调整：按单团队内部使用/私有部署目标，第一版直接进入工作台，移除强制登录、机构空间入口、预览用户和顶部权限控件；后端认证和权限代码保留，后续需要多人协同或公网部署时再启用。
+- 布局修复：三栏固定为左侧任务/目录、中间解读、右侧证据链；压缩顶部工具栏最小宽度，避免按钮换行和证据区被挤压。
 - 当前边界：第九步尚未开始，尚未实现法规上传、解析、版本登记和原文定位。

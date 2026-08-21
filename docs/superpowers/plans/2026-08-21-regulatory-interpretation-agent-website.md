@@ -708,8 +708,8 @@
 - 第 5 步：已完成，已冻结 React+Vite、FastAPI、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界。
 - 第 6 步：已完成，已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、API 健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查。
 - 第 7 步：已完成，已建立 SQLAlchemy 领域模型、证据关联表、Alembic 首次迁移、真实 PostgreSQL 连接和任务/法规/来源文件/证据最小读写 API；GitHub Compose 已通过真实迁移和 CRUD 链路。
-- 第 8 步：已完成，后端已实现注册/登录、JWT、机构切换、成员管理、角色变更和任务组织隔离；工作台前端已接入登录/注册、前端预览、机构空间、成员角色面板和退出登录，并完成浏览器验收。
-- 当前下一项：进入第 9 步法规上传、解析、版本登记和原文定位；第九步尚未开始。
+- 第 8 步：后端完成、前端后置，后端已实现注册/登录、JWT、机构切换、成员管理、角色变更和任务组织隔离；按单团队私有部署目标，第一版前端直接进入工作台，不设置强制登录和顶部权限控件。
+- 当前下一项：进入第 9 步法规上传、解析、版本登记和原文定位；第九步尚未开始。多人协同和公网部署前再启用第八步前端权限入口。
 
 1. 冻结机构类型、适用范围、产品边界和发布口径。
 2. 确定验收法规、旧规/新规样本和人工 Gold 标准。
