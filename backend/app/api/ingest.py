@@ -73,6 +73,7 @@ async def import_regulation(
     if task_id is not None:
         task = db.get(Task, task_id)
         if task is None or task.organization_id != context.organization.organization_id:
+            storage_path.unlink(missing_ok=True)
             raise HTTPException(status_code=404, detail="task not found")
     else:
         task = None
@@ -120,6 +121,7 @@ async def import_regulation(
         )
     )
     if duplicate is not None:
+        storage_path.unlink(missing_ok=True)
         raise HTTPException(status_code=409, detail=f"法规版本已登记：{selected_version_label}")
 
     previous_version_id: str | None = None
