@@ -40,6 +40,8 @@ class Task(Base):
     created_by: Mapped[str] = mapped_column(String(128), nullable=False)
     current_step: Mapped[str] = mapped_column(String(32), default="INPUT", nullable=False)
     task_status: Mapped[str] = mapped_column(String(32), default="created", nullable=False)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.organization_id", ondelete="SET NULL"), nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     regulation_id: Mapped[str | None] = mapped_column(ForeignKey("regulations.regulation_id"), nullable=True)
     source_document_ids: Mapped[list[str]] = mapped_column(JsonType, default=list, nullable=False)
     processing_config: Mapped[dict[str, Any]] = json_column()
@@ -50,9 +52,53 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     source_documents: Mapped[list[SourceDocument]] = relationship(back_populates="task")
+    organization: Mapped[Organization | None] = relationship(back_populates="tasks")
+    owner: Mapped[User | None] = relationship(back_populates="owned_tasks")
     regulation: Mapped[Regulation | None] = relationship(back_populates="tasks", foreign_keys=[regulation_id])
     audit_logs: Mapped[list[AuditLog]] = relationship(back_populates="task")
     qc_results: Mapped[list[QCResult]] = relationship(back_populates="task")
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    organization_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    tasks: Mapped[list[Task]] = relationship(back_populates="organization")
+    members: Mapped[list[OrganizationMember]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    memberships: Mapped[list[OrganizationMember]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    owned_tasks: Mapped[list[Task]] = relationship(back_populates="owner")
+
+
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
+
+    member_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.organization_id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    organization: Mapped[Organization] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="memberships")
+
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_organization_member"),)
 
 
 class SourceDocument(Base):

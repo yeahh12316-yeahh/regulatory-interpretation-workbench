@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class TaskCreate(BaseModel):
     task_id: str | None = Field(default=None, max_length=64)
     task_name: str = Field(min_length=1, max_length=255)
-    created_by: str = Field(min_length=1, max_length=128)
+    created_by: str | None = Field(default=None, max_length=128)
     regulation_id: str | None = Field(default=None, max_length=64)
     processing_config: dict[str, Any] = Field(default_factory=dict)
 
@@ -20,6 +20,8 @@ class TaskRead(BaseModel):
     created_by: str
     current_step: str
     task_status: str
+    organization_id: str | None
+    owner_id: str | None
     regulation_id: str | None
     source_document_ids: list[str]
     processing_config: dict[str, Any]

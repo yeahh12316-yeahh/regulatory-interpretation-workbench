@@ -4,7 +4,7 @@
 
 ## 当前步骤
 
-前七步已完成；第 2 步已按本任务边界完成非 S5 验收材料登记。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
+前八步已完成；第 2 步已按本任务边界完成非 S5 验收材料登记。本机仍未安装 Docker CLI，容器验收通过 GitHub Actions 完成。
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -15,6 +15,7 @@
 | 第 5 步：技术架构冻结 | 已完成 | 已冻结 React+Vite 前端、FastAPI API、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界 |
 | 第 6 步：代码骨架、开发环境、CI、Docker 与健康检查 | 已完成 | 已建立 backend、worker、tests、Dockerfile、Compose、CI、Makefile、健康检查和 Worker 心跳；本地测试、Compose YAML、前端构建通过，GitHub Actions 已真实启动全栈 Compose 并通过 API/Web 健康检查 |
 | 第 7 步：数据库、版本、证据、任务状态和审计日志模型 | 已完成 | 已建立 SQLAlchemy 领域模型、Alembic 首次迁移、PostgreSQL 真实连接、自动迁移和任务/法规/来源文件/证据最小 CRUD API，并通过本地与 GitHub Compose 验收 |
+| 第 8 步：登录、机构空间、角色权限和任务访问控制 | 已完成 | 已实现注册/登录、JWT、当前用户、机构切换、成员管理、角色变更和任务组织隔离；本地 7 项测试及 GitHub PostgreSQL Compose 验收通过 |
 
 ## 第 4 步浏览验收证据
 
@@ -62,3 +63,13 @@
 - 最小 API：`POST/GET /api/tasks`、`POST/GET /api/regulations`、`POST/GET /api/source-documents`、`POST/GET /api/evidence`；证据写入必须引用已存在的来源文件。
 - 验收结果：GitHub Actions Compose smoke test 已执行 Alembic 迁移、`/ready` PostgreSQL 连通检查，以及任务—法规—来源文件—证据的真实写入/读取链路；[CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32499115706)。
 - 当前边界：2015 年版本仍未提供，S5 不启用；本步不代表外规解读 Agent 已经可以调用模型生成真实解读。
+
+## 第 8 步交付
+
+- 认证：`backend/app/api/auth.py`、`backend/app/security.py`
+- 机构与成员：`backend/app/api/organization.py`
+- 角色：`owner`、`admin`、`editor`、`reviewer`、`viewer`
+- 数据迁移：`backend/migrations/versions/b2f3fd094106_add_organizations_users_memberships_and_.py`
+- 已验证：注册、登录、JWT Bearer 认证、多机构切换、成员添加、角色升级、viewer 只读、editor 可创建任务、跨机构任务不可见。
+- 验收结果：[GitHub CI run](https://github.com/yeahh12316-yeahh/regulatory-interpretation-workbench/actions/runs/32500761887)。
+- 当前边界：第八步只完成身份与访问控制，不包含法规上传解析；第九步开始处理法规文件和原文定位。

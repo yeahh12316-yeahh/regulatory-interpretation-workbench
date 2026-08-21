@@ -59,19 +59,28 @@ jobs:
           exit 1
       - name: Exercise PostgreSQL CRUD API
         run: |
+          curl -fsS -X POST http://localhost:8000/api/auth/register \
+            -H 'content-type: application/json' \
+            -d '{"email":"ci-owner@example.com","password":"correct-horse-battery-staple","display_name":"CI Owner","organization_name":"CI Org","organization_slug":"ci-org"}' >/tmp/auth.json
+          token=$(python -c 'import json; print(json.load(open("/tmp/auth.json"))["access_token"])')
+          auth_header="Authorization: Bearer ${token}"
           curl -fsS -X POST http://localhost:8000/api/regulations \
             -H 'content-type: application/json' \
+            -H "$auth_header" \
             -d '{"regulation_id":"CI_REG_001","title":"CI验收法规","issuer":["财政部"]}' >/tmp/regulation.json
           curl -fsS -X POST http://localhost:8000/api/tasks \
             -H 'content-type: application/json' \
+            -H "$auth_header" \
             -d '{"task_id":"CI_TASK_001","task_name":"CI验收任务","created_by":"github","regulation_id":"CI_REG_001"}' >/tmp/task.json
           curl -fsS -X POST http://localhost:8000/api/source-documents \
             -H 'content-type: application/json' \
+            -H "$auth_header" \
             -d '{"document_id":"CI_DOC_001","task_id":"CI_TASK_001","file_name":"ci.pdf","source_type":"official_pdf","storage_key":"ci/ci.pdf","sha256":"8bd8290816f7ba9dbba81def4e725fbfccdea984a0f616f2bb00a98a6b8c2da8","page_count":1}' >/tmp/source-document.json
           curl -fsS -X POST http://localhost:8000/api/evidence \
             -H 'content-type: application/json' \
+            -H "$auth_header" \
             -d '{"evidence_id":"CI_EVID_001","task_id":"CI_TASK_001","regulation_id":"CI_REG_001","source_document_id":"CI_DOC_001","source_type":"official_pdf","locator":{"page":1},"source_text":"CI evidence","verification_status":"verified"}' >/tmp/evidence.json
-          curl -fsS http://localhost:8000/api/evidence/CI_EVID_001 >/tmp/evidence-read.json
+          curl -fsS http://localhost:8000/api/evidence/CI_EVID_001 -H "$auth_header" >/tmp/evidence-read.json
           grep -q '"source_document_id":"CI_DOC_001"' /tmp/evidence-read.json
       - name: Tear down stack
         if: always()

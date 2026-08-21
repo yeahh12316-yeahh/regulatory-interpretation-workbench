@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://redis:6379/2"
     enable_s5: bool = False
     enable_ocr_fallback: bool = True
+    jwt_secret: str = "dev-only-change-this-secret-32-bytes-min"
+    jwt_algorithm: str = "HS256"
+    access_token_minutes: int = 60
 
     model_config = SettingsConfigDict(
         env_file=(".env",),

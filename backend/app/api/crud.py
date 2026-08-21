@@ -16,6 +16,7 @@ from backend.app.api.schemas import (
 )
 from backend.app.db.models import Evidence, Regulation, SourceDocument, Task
 from backend.app.db.session import get_db
+from backend.app.security import AuthContext, CurrentContext, require_roles
 
 
 router = APIRouter(prefix="/api", tags=["data"])
@@ -33,13 +34,19 @@ def _get_or_404(db: Session, model, object_id: str, label: str):
 
 
 @router.post("/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
-def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> Task:
+def create_task(
+    payload: TaskCreate,
+    context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
+    db: Session = Depends(get_db),
+) -> Task:
     if payload.regulation_id is not None:
         _get_or_404(db, Regulation, payload.regulation_id, "regulation")
     task = Task(
         task_id=payload.task_id or _id("TASK"),
         task_name=payload.task_name,
-        created_by=payload.created_by,
+        created_by=context.user.email,
+        organization_id=context.organization.organization_id,
+        owner_id=context.user.user_id,
         regulation_id=payload.regulation_id,
         processing_config=payload.processing_config,
     )
@@ -50,17 +57,31 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> Task:
 
 
 @router.get("/tasks/{task_id}", response_model=TaskRead)
-def get_task(task_id: str, db: Session = Depends(get_db)) -> Task:
-    return _get_or_404(db, Task, task_id, "task")
+def get_task(task_id: str, context: CurrentContext, db: Session = Depends(get_db)) -> Task:
+    task = _get_or_404(db, Task, task_id, "task")
+    if task.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail=f"task not found: {task_id}")
+    return task
 
 
 @router.get("/tasks", response_model=list[TaskRead])
-def list_tasks(limit: int = 50, db: Session = Depends(get_db)) -> list[Task]:
-    return list(db.scalars(select(Task).order_by(Task.created_at.desc()).limit(min(limit, 200))))
+def list_tasks(context: CurrentContext, limit: int = 50, db: Session = Depends(get_db)) -> list[Task]:
+    return list(
+        db.scalars(
+            select(Task)
+            .where(Task.organization_id == context.organization.organization_id)
+            .order_by(Task.created_at.desc())
+            .limit(min(limit, 200))
+        )
+    )
 
 
 @router.post("/regulations", response_model=RegulationRead, status_code=status.HTTP_201_CREATED)
-def create_regulation(payload: RegulationCreate, db: Session = Depends(get_db)) -> Regulation:
+def create_regulation(
+    payload: RegulationCreate,
+    context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
+    db: Session = Depends(get_db),
+) -> Regulation:
     regulation = Regulation(
         regulation_id=payload.regulation_id or _id("REG"),
         title=payload.title,
@@ -78,19 +99,25 @@ def create_regulation(payload: RegulationCreate, db: Session = Depends(get_db)) 
 
 
 @router.get("/regulations/{regulation_id}", response_model=RegulationRead)
-def get_regulation(regulation_id: str, db: Session = Depends(get_db)) -> Regulation:
+def get_regulation(regulation_id: str, context: CurrentContext, db: Session = Depends(get_db)) -> Regulation:
     return _get_or_404(db, Regulation, regulation_id, "regulation")
 
 
 @router.get("/regulations", response_model=list[RegulationRead])
-def list_regulations(limit: int = 50, db: Session = Depends(get_db)) -> list[Regulation]:
+def list_regulations(context: CurrentContext, limit: int = 50, db: Session = Depends(get_db)) -> list[Regulation]:
     return list(db.scalars(select(Regulation).order_by(Regulation.created_at.desc()).limit(min(limit, 200))))
 
 
 @router.post("/source-documents", response_model=SourceDocumentRead, status_code=status.HTTP_201_CREATED)
-def create_source_document(payload: SourceDocumentCreate, db: Session = Depends(get_db)) -> SourceDocument:
+def create_source_document(
+    payload: SourceDocumentCreate,
+    context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
+    db: Session = Depends(get_db),
+) -> SourceDocument:
     if payload.task_id is not None:
-        _get_or_404(db, Task, payload.task_id, "task")
+        task = _get_or_404(db, Task, payload.task_id, "task")
+        if task.organization_id != context.organization.organization_id:
+            raise HTTPException(status_code=404, detail="task not found")
     document = SourceDocument(
         document_id=payload.document_id or _id("DOC"),
         task_id=payload.task_id,
@@ -110,15 +137,26 @@ def create_source_document(payload: SourceDocumentCreate, db: Session = Depends(
 
 
 @router.get("/source-documents/{document_id}", response_model=SourceDocumentRead)
-def get_source_document(document_id: str, db: Session = Depends(get_db)) -> SourceDocument:
-    return _get_or_404(db, SourceDocument, document_id, "source document")
+def get_source_document(document_id: str, context: CurrentContext, db: Session = Depends(get_db)) -> SourceDocument:
+    document = _get_or_404(db, SourceDocument, document_id, "source document")
+    if document.task_id is not None and document.task.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail="source document not found")
+    return document
 
 
 @router.post("/evidence", response_model=EvidenceRead, status_code=status.HTTP_201_CREATED)
-def create_evidence(payload: EvidenceCreate, db: Session = Depends(get_db)) -> Evidence:
-    _get_or_404(db, SourceDocument, payload.source_document_id, "source document")
+def create_evidence(
+    payload: EvidenceCreate,
+    context: AuthContext = Depends(require_roles("owner", "admin", "editor", "reviewer")),
+    db: Session = Depends(get_db),
+) -> Evidence:
+    source_document = _get_or_404(db, SourceDocument, payload.source_document_id, "source document")
+    if source_document.task_id is not None and source_document.task.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail="source document not found")
     if payload.task_id is not None:
-        _get_or_404(db, Task, payload.task_id, "task")
+        task = _get_or_404(db, Task, payload.task_id, "task")
+        if task.organization_id != context.organization.organization_id:
+            raise HTTPException(status_code=404, detail="task not found")
     if payload.regulation_id is not None:
         _get_or_404(db, Regulation, payload.regulation_id, "regulation")
     evidence = Evidence(
@@ -141,10 +179,21 @@ def create_evidence(payload: EvidenceCreate, db: Session = Depends(get_db)) -> E
 
 
 @router.get("/evidence/{evidence_id}", response_model=EvidenceRead)
-def get_evidence(evidence_id: str, db: Session = Depends(get_db)) -> Evidence:
-    return _get_or_404(db, Evidence, evidence_id, "evidence")
+def get_evidence(evidence_id: str, context: CurrentContext, db: Session = Depends(get_db)) -> Evidence:
+    evidence = _get_or_404(db, Evidence, evidence_id, "evidence")
+    if evidence.task_id is not None and evidence.task.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail="evidence not found")
+    return evidence
 
 
 @router.get("/evidence", response_model=list[EvidenceRead])
-def list_evidence(limit: int = 50, db: Session = Depends(get_db)) -> list[Evidence]:
-    return list(db.scalars(select(Evidence).order_by(Evidence.created_at.desc()).limit(min(limit, 200))))
+def list_evidence(context: CurrentContext, limit: int = 50, db: Session = Depends(get_db)) -> list[Evidence]:
+    return list(
+        db.scalars(
+            select(Evidence)
+            .join(Task, Evidence.task_id == Task.task_id, isouter=True)
+            .where((Evidence.task_id.is_(None)) | (Task.organization_id == context.organization.organization_id))
+            .order_by(Evidence.created_at.desc())
+            .limit(min(limit, 200))
+        )
+    )
