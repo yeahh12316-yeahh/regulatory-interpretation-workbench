@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   chooseCurrentTask,
   mapApiTaskToWorkbenchTask,
+  mapPipelineEvidence,
 } from '../../src/lib/task-persistence.js'
 
 test('maps a persisted API task into the public workbench task row', () => {
@@ -34,4 +35,27 @@ test('prefers the persisted current task and otherwise chooses the newest API ta
   assert.equal(chooseCurrentTask(tasks, 'TASK_OLD'), 'TASK_OLD')
   assert.equal(chooseCurrentTask(tasks, 'TASK_MISSING'), 'TASK_NEW')
   assert.equal(chooseCurrentTask([], null), null)
+})
+
+test('maps restored pipeline evidence without retaining stale task evidence', () => {
+  const evidence = mapPipelineEvidence({
+    evidence: [{
+      evidence_id: 'E_NEW_1',
+      source_text: '新任务原文片段',
+      source_document_id: 'DOC_NEW',
+      locator: { article_no: '第一条', page: 3 },
+      description: '新任务证据',
+    }],
+  })
+
+  assert.deepEqual(evidence, [{
+    id: 'E_NEW_1',
+    title: '第一条 原文证据',
+    type: '法规原文证据',
+    location: '新任务原文片段 · 第3页',
+    note: '新任务证据',
+    tone: 'green',
+    sourceDocumentId: 'DOC_NEW',
+    sourcePage: 3,
+  }])
 })

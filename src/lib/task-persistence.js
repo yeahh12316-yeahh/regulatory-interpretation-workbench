@@ -31,3 +31,16 @@ export function chooseCurrentTask(tasks, persistedTaskId) {
     .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')))
     .at(0)?.task_id || null
 }
+
+export function mapPipelineEvidence(result) {
+  return (result?.evidence || []).map((item) => ({
+    id: item.evidence_id,
+    title: `${item.locator?.article_no || '条款'} 原文证据`,
+    type: '法规原文证据',
+    location: `${item.source_text?.slice(0, 26) || '原文'} · 第${item.locator?.page || '待确认'}页`,
+    note: item.description || '已绑定到 S1—S4 解读结果，待人工复核。',
+    tone: 'green',
+    sourceDocumentId: item.source_document_id,
+    sourcePage: item.locator?.page || 1,
+  }))
+}

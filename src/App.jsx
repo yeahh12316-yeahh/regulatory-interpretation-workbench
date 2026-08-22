@@ -40,7 +40,7 @@ import {
 import { apiClient } from './lib/api-client'
 import { resolveApiUrl, runtimeConfig } from './lib/runtime-config'
 import { getLatestReviewGateSummary } from './lib/review-gate'
-import { chooseCurrentTask, mapApiTaskToWorkbenchTask } from './lib/task-persistence'
+import { chooseCurrentTask, mapApiTaskToWorkbenchTask, mapPipelineEvidence } from './lib/task-persistence'
 import { selectTaskState } from './lib/task-selection'
 
 const tasks = [
@@ -719,6 +719,7 @@ function App() {
         setPipelineResult(result)
         setReviewState(result)
         setActiveRegulationId(result.task?.regulation_id || null)
+        setEvidenceItems(mapPipelineEvidence(result))
       } catch {
         // The request layer retries cold-start failures; the UI keeps the last verified state if retries exhaust.
       }
@@ -811,6 +812,7 @@ function App() {
       setPipelineResult(result)
       setReviewState(result)
       setActiveRegulationId(result.task?.regulation_id || null)
+      setEvidenceItems(mapPipelineEvidence(result))
     } catch (requestError) {
       setPipelineError(requestError.message || '任务载入失败，请稍后重试')
       notify(requestError.message || '任务载入失败，请稍后重试')
@@ -886,17 +888,7 @@ function App() {
     setPipelineResult(result)
     setReviewState(result)
     setActiveRegulationId(result.task?.regulation_id || activeRegulationId)
-    const evidence = (result.evidence || []).map((item) => ({
-      id: item.evidence_id,
-      title: `${item.locator?.article_no || '条款'} 原文证据`,
-      type: '法规原文证据',
-      location: `${item.source_text?.slice(0, 26) || '原文'} · 第${item.locator?.page || '待确认'}页`,
-      note: item.description || '已绑定到 S1—S4 解读结果，待人工复核。',
-      tone: 'green',
-      sourceDocumentId: item.source_document_id,
-      sourcePage: item.locator?.page || 1,
-    }))
-    setEvidenceItems((items) => [...evidence, ...items.filter((item) => !evidence.some((newItem) => newItem.id === item.id))])
+    setEvidenceItems(mapPipelineEvidence(result))
     return result
   }
 
@@ -1113,7 +1105,7 @@ function App() {
               <span className="article-symbol">§</span>
               <div>
               <div className="eyebrow">法规解读任务 · 已载入用户提供文件</div>
-                <h1>金融企业呆账核销管理办法（2017年版）</h1>
+                <h1>{pipelineResult?.stages?.S1?.output?.title || pipelineResult?.task?.task_name?.replace(/ 解读$/, '') || '金融企业呆账核销管理办法（2017年版）'}</h1>
               </div>
             </div>
             <div className="content-toolbar-actions">
@@ -1258,6 +1250,7 @@ function WorkflowProgress({ workflow, onRetry, onRerun, busy }) {
 }
 
 function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
+  const s1 = pipelineResult?.stages?.S1?.output || {}
   const applicability = pipelineResult?.stages?.S2?.output
   const requirements = pipelineResult?.stages?.S3?.output
   const s4 = pipelineResult?.stages?.S4?.output
@@ -1272,12 +1265,12 @@ function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
       <section>
         <SectionTitle>法规概览</SectionTitle>
         <div className="data-table overview-table">
-          <div className="data-cell label">法规名称</div><div className="data-cell value wide">金融企业呆账核销管理办法（2017年版）</div>
-          <div className="data-cell label">发布机关</div><div className="data-cell value">财政部</div>
-          <div className="data-cell label">文号</div><div className="data-cell value metadata-value-with-status"><span>财金〔2017〕90号</span><StatusTag tone="review">待人工确认</StatusTag></div>
-          <div className="data-cell label">发布日期</div><div className="data-cell value">2017-08-31</div>
-          <div className="data-cell label">生效日期</div><div className="data-cell value">2017-10-01</div>
-          <div className="data-cell label">版本状态</div><div className="data-cell value"><StatusTag tone="green">已载入 4 页</StatusTag></div>
+          <div className="data-cell label">法规名称</div><div className="data-cell value wide">{s1.title || '金融企业呆账核销管理办法（2017年版）'}</div>
+          <div className="data-cell label">发布机关</div><div className="data-cell value">{Array.isArray(s1.issuer) ? s1.issuer.join('、') : s1.issuer || '待确认'}</div>
+          <div className="data-cell label">文号</div><div className="data-cell value metadata-value-with-status"><span>{s1.document_no || '待确认'}</span><StatusTag tone={s1.document_no ? 'green' : 'review'}>{s1.document_no ? '已识别，待人工复核' : '待人工确认'}</StatusTag></div>
+          <div className="data-cell label">发布日期</div><div className="data-cell value">{s1.publish_date || '待确认'}</div>
+          <div className="data-cell label">生效日期</div><div className="data-cell value">{s1.effective_date || '待确认'}</div>
+          <div className="data-cell label">版本状态</div><div className="data-cell value"><StatusTag tone="green">已载入 {s1.page_count || '—'} 页</StatusTag></div>
           <div className="data-cell label">适用范围</div><div className="data-cell value wide">金融企业；具体机构类型需结合正式原文和用户任务范围确认。</div>
           <div className="data-cell label">法规定位</div><div className="data-cell value wide"><StatusTag tone={locator?.status === 'IDENTIFIED' ? 'green' : 'review'}>{locator?.status === 'IDENTIFIED' ? '已定位' : locator ? '已定位但需复核' : '待运行'}</StatusTag>{locator ? ` · ${locator.source_file_name} · SHA-256 ${locator.source_hash.slice(0, 12)}…` : '尚未运行 S2 定位'}</div>
         </div>
