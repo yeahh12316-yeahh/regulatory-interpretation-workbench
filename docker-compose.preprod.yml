@@ -1,0 +1,98 @@
+services:
+  web:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    logging: &json-file-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    environment:
+      APP_ENV: staging
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env.preprod}
+      REDIS_READINESS_REQUIRED: "true"
+      LOG_FORMAT: json
+      PROMETHEUS_ENABLED: "true"
+    logging: *json-file-logging
+
+  worker:
+    restart: unless-stopped
+    command: ["celery", "-A", "worker.app.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${WORKER_CONCURRENCY:-2}"]
+    environment:
+      APP_ENV: staging
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      LOG_FORMAT: json
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A worker.app.celery_app:celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging: *json-file-logging
+
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    logging: *json-file-logging
+
+  redis:
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: !reset []
+    logging: *json-file-logging
+
+  minio:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:${MINIO_API_PORT:-19000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
+    logging: *json-file-logging
+
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-regagent}
+      PGUSER: ${POSTGRES_USER:-regagent}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.preprod}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./ops/backup-postgres.sh:/backup/backup-postgres.sh:ro
+      - postgres_backups:/backups
+    command: ["sh", "-c", "while true; do /backup/backup-postgres.sh; sleep \"$${BACKUP_INTERVAL_SECONDS}\"; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *json-file-logging
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *json-file-logging
+
+volumes:
+  postgres_backups:
+  prometheus_data:

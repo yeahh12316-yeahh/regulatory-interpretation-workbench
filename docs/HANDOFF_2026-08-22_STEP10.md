@@ -71,7 +71,7 @@
 
 没有把任务扩展为完整的外规内化平台，也没有把制度映射、Gap、整改、审计闭环塞入第一版核心闭环。
 
-### 第 2 步：验收法规与 Gold——已完成，当前任务不做 S5
+### 第 2 步：验收法规与 Gold——正文 Gold 基线已完成，元数据闸门保留待确认
 
 用户提供的真实文件：
 
@@ -87,6 +87,8 @@
 - 正文条款：第 1 条至第 25 条；
 - 文号：当前 PDF 中没有可靠识别结果，因此没有擅自补齐；
 - 文件中提及附件，但附件正文未可靠包含在当前 PDF 内。
+
+正文 Gold 基线已经完成：Gold JSON 已登记 25 条条款、页码、机构适用性、关键数字、12 个高风险事实点和证据位置。文号 `财金〔2017〕90号` 已在来源登记和外部路径中记录，但用户提供的 PDF 内没有可靠定位结果；附件仍未提供。详细验收材料见 `docs/ACCEPTANCE_MATERIALS_CASE_001.md`。这些属于后续人工 QC 的待确认边界，不得被自动运行结果覆盖。
 
 用户明确表示没有 2015 年旧版，因此：
 
@@ -356,9 +358,12 @@ SQLAlchemy 模型已覆盖：
 - `backend/app/main.py`：FastAPI 入口；
 - `backend/app/api/ingest.py`：法规上传和解析；
 - `backend/app/api/pipeline.py`：S1—S4 API；
+- `backend/app/api/review.py`：第 11 步人工复核、QC 和导出 API；
 - `backend/app/api/schemas.py`：接口 Schema；
 - `backend/app/services/regulation_ingest.py`：法规解析；
 - `backend/app/services/interpretation_pipeline.py`：S1—S4 流水线；
+- `backend/app/services/review.py`：人工复核和质量检查闸门；
+- `backend/app/services/docx_export.py`：Word 基础交付物生成；
 - `backend/app/db/models.py`：数据库模型；
 - `backend/app/core/config.py`：配置和模型 Provider 环境变量；
 - `backend/migrations/versions/cf7a0d6a10f2_add_pipeline_output_metadata.py`：第十步字段迁移。
@@ -370,6 +375,7 @@ SQLAlchemy 模型已覆盖：
 - `tests/backend/test_data_model.py`；
 - `tests/backend/test_health.py`；
 - `tests/backend/test_interpretation_pipeline.py`；
+- `tests/backend/test_review_api.py`；
 - `tests/worker/test_heartbeat.py`。
 
 ### 规范与产品文档
@@ -435,9 +441,19 @@ SQLAlchemy 模型已覆盖：
 
 ## 6. 尚未完成的事项
 
-### 第 11 步：人工复核、质量检查与交付物导出——下一步
+### 第 11 步：人工复核、质量检查与交付物导出——已实现第一版，待真实法规验收
 
-新会话应从这里开始，但开始前要先检查当前代码和本文件。
+第 11 步核心代码已落地；后续应先用真实 2017 年 PDF 验证阻断项、人工修订、复核锁定和交付物导出，再考虑第 12 步。
+
+截至当前会话，已完成：
+
+- `backend/app/api/review.py`：复核读取、元数据修订、Requirement 复核、Interpretation 编辑/锁定、证据核验、QC、DOCX 导出和下载 API；
+- `backend/app/services/review.py`：原文片段、Article/Evidence 绑定、待确认元数据、附件缺失、人工锁定、证据核验和 S5 边界检查；
+- `backend/app/services/docx_export.py`：法规概览、适用性、监管要求、逐条解读、证据链和真实性边界的 Word 基础导出；
+- `src/App.jsx`、`src/styles.css`、`src/lib/api-client.js`：人工复核与交付闸门面板；
+- `tests/backend/test_review_api.py`：复核留痕、证据保护、QC 阻断、QC 通过和 DOCX 下载测试；
+- 本地隔离环境全量测试 `13 passed`，前端生产构建通过，DOCX 已完成 LibreOffice 转 PDF/PNG 视觉复核。
+- 真实 2017 年 PDF 已在私有模式 SQLite 后端完成导入和 S1—S4 验收：成功识别 25 条；QC 正确阻断，阻断码包括 `UNRESOLVED_METADATA`、`MISSING_ATTACHMENT_SOURCE`、`EVIDENCE_NOT_VERIFIED`、`REQUIREMENT_NOT_REVIEWED` 和 `INTERPRETATION_NOT_LOCKED`。
 
 建议按以下顺序实现：
 
@@ -473,13 +489,13 @@ SQLAlchemy 模型已覆盖：
    - `ready_for_export`：质量检查通过，可以导出；
    - `exported`：已生成交付物。
 
-5. 第 11 步验收
+5. 待完成：真实法规验收
    - 用真实 2017 年 PDF 在私有后端运行一次；
    - 验证第 1—25 条都保留原文定位；
    - 验证缺失文号和附件缺失被标记；
    - 验证 S5 仍显示“未启用/缺少 2015 年旧版”；
    - 验证人工修改、锁定、审计记录和导出结果；
-   - 完成后才能考虑第 12 步。
+   - 以上真实法规验收完成后才能考虑第 12 步。
 
 ### 第 12 步及以后：暂不开始，只记录方向
 
@@ -523,7 +539,7 @@ SQLAlchemy 模型已覆盖：
 
 可以将下面内容直接复制到新会话：
 
-> 请先读取项目目录 `/Users/yeahh/Documents/ChatGPT/外规解读agent/` 下的 `docs/HANDOFF_2026-08-22_STEP10.md`、`docs/IMPLEMENTATION_STATUS.md` 和当前 Git 状态。我们已经完成第 1—10 步，不要重复这些步骤，也不要跳到第 12 步。现在从第 11 步“人工复核、质量检查与交付物导出”开始。目标仍然是单团队内部使用/私有部署的“外规解读智能体工作台”，只做外规解读，不做制度映射、Gap、整改或审计闭环。2017 年《金融企业呆账核销管理办法》已提供，2015 年旧版缺失，S5 必须保持跳过。请先给出第 11 步的实施计划和当前代码检查结果，确认后再修改代码；任何发现的风险或阻塞马上说明。
+> 请先读取项目目录 `/Users/yeahh/Documents/ChatGPT/外规解读agent/` 下的 `docs/HANDOFF_2026-08-22_STEP10.md`、`docs/IMPLEMENTATION_STATUS.md` 和当前 Git 状态。第 1—10 步和第 11 步第一版代码已经完成，不要重复实现，也不要跳到第 12 步。现在继续第 11 步真实法规验收：使用项目内 2017 年《金融企业呆账核销管理办法》在私有后端完成文号/附件人工确认、全量 Requirement 和 Interpretation 复核、证据核验、QC 通过和 DOCX 导出。产品只做外规解读，不做制度映射、Gap、整改或审计闭环；2015 年旧版缺失，S5 必须保持跳过。先读取当前实现和真实 QC 阻断结果，再处理剩余事项；任何发现的风险或阻塞马上说明。
 
 ## 9. 交接结论
 
@@ -533,5 +549,6 @@ SQLAlchemy 模型已覆盖：
 - 第 10 步 S1—S4 已实现并通过 CI、Compose 和前端浏览验收；
 - 公开网站是前端工作台，不是已经接入后端的完整公网 Agent；
 - 真实后端部署和模型 API 接入尚未完成；
-- 第 11 步是下一步唯一应推进的开发步骤；
-- 2015 年旧版、附件补充、人工复核、QC 和交付物导出仍是当前主要待办。
+- 第 11 步人工复核、QC 和基础 DOCX 导出已实现并通过本地自动化测试；
+- 真实 2017 年 PDF 的私有后端端到端复核、附件/文号人工补充和实际交付导出仍是当前待办；
+- 第 12 步仍不得开始，直到真实法规验收完成。

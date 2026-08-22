@@ -47,6 +47,7 @@ class RegulationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     regulation_id: str
+    organization_id: str | None
     title: str
     document_no: str | None
     issuer: list[str]
@@ -234,3 +235,162 @@ class PipelineRunRead(BaseModel):
     article_interpretations: list[InterpretationRead]
     requirements: list[RequirementRead]
     evidence: list[EvidenceRead]
+
+
+class WorkflowNodeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    node_id: str
+    workflow_id: str
+    node_name: str
+    sequence: int
+    status: str
+    attempt: int
+    progress: int
+    output: dict[str, Any]
+    error_state: dict[str, Any]
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    workflow_id: str
+    task_id: str
+    workflow_type: str
+    status: str
+    current_node: str | None
+    progress: int
+    requested_from: str
+    params: dict[str, Any]
+    error_state: dict[str, Any]
+    celery_task_id: str | None
+    retry_count: int
+    max_retries: int
+    parent_workflow_id: str | None
+    requested_by: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    nodes: list[WorkflowNodeRead]
+
+
+class WorkflowStartRequest(PipelineRunRequest):
+    workflow_fail_at: str | None = Field(default=None, max_length=8)
+
+
+class WorkflowRerunRequest(BaseModel):
+    node_name: str = Field(min_length=2, max_length=8)
+
+
+class RequirementReviewUpdate(BaseModel):
+    subject: str | None = Field(default=None, max_length=512)
+    action: str | None = None
+    object: str | None = None
+    condition: str | None = None
+    deadline: str | None = Field(default=None, max_length=128)
+    frequency: str | None = Field(default=None, max_length=128)
+    threshold: str | None = Field(default=None, max_length=256)
+    exception: str | None = None
+    evidence_required: str | None = None
+    review_status: str = Field(default="reviewed", max_length=32)
+
+
+class InterpretationReviewUpdate(BaseModel):
+    summary: str | None = None
+    interpretation: str | None = None
+    regulatory_meaning: str | None = None
+    key_points: list[str] | None = None
+    conditions: list[str] | None = None
+    exceptions: list[str] | None = None
+    content_blocks: list[dict[str, Any]] | None = None
+    review_status: str = Field(default="reviewed", max_length=32)
+    human_lock: bool = True
+
+
+class MetadataReviewUpdate(BaseModel):
+    document_no: str | None = Field(default=None, max_length=128)
+    issuer: list[str] | None = None
+    publish_date: date | None = None
+    effective_date: date | None = None
+    attachment_resolution: str | None = Field(default=None, max_length=32)
+
+
+class EvidenceReviewUpdate(BaseModel):
+    verification_status: str = Field(default="verified", max_length=32)
+    description: str | None = None
+
+
+class QCResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    qc_id: str
+    task_id: str
+    target_type: str
+    target_id: str
+    check_type: str
+    status: str
+    findings: dict[str, Any]
+    created_at: datetime
+
+
+class ReviewRead(PipelineRunRead):
+    qc_results: list[QCResultRead]
+    audit_log_count: int
+    review_summary: dict[str, Any]
+
+
+class ContentPackageRead(BaseModel):
+    package_id: str
+    task_id: str
+    regulation_id: str
+    pipeline_run_id: str
+    package_version: int
+    status: str
+    content_hash: str
+    content: dict[str, Any]
+    created_by: str
+    locked_by: str
+    locked_at: datetime
+    created_at: datetime
+
+
+class QCReportRead(BaseModel):
+    status: str
+    task_status: str
+    blocker_count: int
+    warning_count: int
+    blockers: list[dict[str, Any]]
+    warnings: list[dict[str, Any]]
+    results: list[QCResultRead]
+
+
+class LLMReviewRead(BaseModel):
+    status: str
+    review_run_id: str
+    provider: str
+    model: str
+    findings: list[dict[str, Any]]
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: str = Field(description="return、approve 或 publish")
+    reason: str | None = Field(default=None, max_length=512)
+    target_type: str | None = Field(default=None, max_length=64)
+    target_id: str | None = Field(default=None, max_length=112)
+
+
+class ExportRead(BaseModel):
+    report_id: str
+    task_id: str
+    file_name: str
+    download_url: str
+    html_file_name: str | None = None
+    html_download_url: str | None = None
+    consistency: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+    review_status: str

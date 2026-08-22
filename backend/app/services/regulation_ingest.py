@@ -5,8 +5,11 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any, Callable
 
 from pypdf import PdfReader
+
+from backend.app.services.ocr_fallback import OCRUnavailableError, extract_ocr_pages
 
 
 ARTICLE_PATTERN = re.compile(r"^(第[〇零一二三四五六七八九十百千万两0-9]+条)\s*(.*)$")
@@ -24,7 +27,7 @@ class ParsedArticle:
     article_order: int
     original_text: str
     source_page: int
-    source_offset: dict[str, int]
+    source_offset: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ class ParsedRegulation:
     page_count: int
     articles: list[ParsedArticle]
     warnings: list[str]
+    extraction_summary: dict[str, Any]
 
 
 def normalize_text(value: str) -> str:
@@ -74,9 +78,32 @@ def _clean_page_lines(page_text: str) -> list[tuple[int, str]]:
     return lines
 
 
-def parse_pdf(path: str | Path) -> ParsedRegulation:
+def parse_pdf(
+    path: str | Path,
+    *,
+    enable_ocr: bool = True,
+    ocr_provider: Callable[[str | Path, list[int]], dict[int, str]] | None = None,
+) -> ParsedRegulation:
     reader = PdfReader(str(path))
     pages = [(page.extract_text() or "") for page in reader.pages]
+    page_methods = ["pypdf" if text.strip() else "empty" for text in pages]
+    empty_pages = [page_number for page_number, text in enumerate(pages, start=1) if not text.strip()]
+    warnings: list[str] = []
+    ocr_pages: list[int] = []
+    ocr_error: str | None = None
+    if empty_pages and enable_ocr:
+        try:
+            ocr_text = (ocr_provider or extract_ocr_pages)(path, empty_pages)
+            for page_number, text in ocr_text.items():
+                if page_number in empty_pages and text.strip():
+                    pages[page_number - 1] = text
+                    page_methods[page_number - 1] = "ocr"
+                    ocr_pages.append(page_number)
+            if ocr_pages:
+                warnings.append("部分页面通过 OCR 提取；相关条款需人工核验文字准确性")
+        except OCRUnavailableError as exc:
+            ocr_error = str(exc)
+            warnings.append(ocr_error)
     full_text = "\n".join(normalize_text(page) for page in pages)
     title_match = re.search(r"《([^》]{2,200})》", full_text)
     title = title_match.group(1).strip() if title_match else Path(path).stem
@@ -111,6 +138,7 @@ def parse_pdf(path: str | Path) -> ParsedRegulation:
                         "page": int(current["source_page"]),
                         "line_start": int(current["line_start"]),
                         "line_end": int(current["line_end"]),
+                        "extraction_method": str(current["extraction_method"]),
                     },
                 )
             )
@@ -129,6 +157,7 @@ def parse_pdf(path: str | Path) -> ParsedRegulation:
                     "article_no": article_match.group(1),
                     "chapter_no": current_chapter,
                     "source_page": page_number,
+                    "extraction_method": page_methods[page_number - 1],
                     "line_start": line_number,
                     "line_end": line_number,
                     "lines": [article_match.group(2).strip()] if article_match.group(2).strip() else [],
@@ -141,7 +170,6 @@ def parse_pdf(path: str | Path) -> ParsedRegulation:
             current["last_page"] = page_number
 
     flush()
-    warnings: list[str] = []
     if not pages:
         warnings.append("文件没有可读取页面")
     if not articles:
@@ -161,4 +189,19 @@ def parse_pdf(path: str | Path) -> ParsedRegulation:
         page_count=len(pages),
         articles=articles,
         warnings=warnings,
+        extraction_summary={
+            "pypdf_pages": [page_number for page_number, method in enumerate(page_methods, start=1) if method == "pypdf"],
+            "ocr_pages": sorted(ocr_pages),
+            "unreadable_pages": [page_number for page_number, method in enumerate(page_methods, start=1) if method == "empty"],
+            "page_diagnostics": [
+                {
+                    "page": page_number,
+                    "method": method,
+                    "char_count": len(normalize_text(pages[page_number - 1]).strip()),
+                    "status": "ocr_review_required" if method == "ocr" else ("unreadable" if method == "empty" else "extracted"),
+                }
+                for page_number, method in enumerate(page_methods, start=1)
+            ],
+            "ocr_error": ocr_error,
+        },
     )

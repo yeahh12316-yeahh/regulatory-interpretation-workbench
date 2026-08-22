@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -33,6 +34,19 @@ def _get_or_404(db: Session, model, object_id: str, label: str):
     return item
 
 
+def _get_regulation_for_context(db: Session, regulation_id: str, context: AuthContext) -> Regulation:
+    regulation = _get_or_404(db, Regulation, regulation_id, "regulation")
+    if regulation.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail=f"regulation not found: {regulation_id}")
+    return regulation
+
+
+def _validate_storage_key(storage_key: str) -> None:
+    path = Path(storage_key)
+    if path.is_absolute() or ".." in path.parts:
+        raise HTTPException(status_code=422, detail="storage_key 不能包含绝对路径或目录穿越片段")
+
+
 @router.post("/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
 def create_task(
     payload: TaskCreate,
@@ -40,7 +54,7 @@ def create_task(
     db: Session = Depends(get_db),
 ) -> Task:
     if payload.regulation_id is not None:
-        _get_or_404(db, Regulation, payload.regulation_id, "regulation")
+        _get_regulation_for_context(db, payload.regulation_id, context)
     task = Task(
         task_id=payload.task_id or _id("TASK"),
         task_name=payload.task_name,
@@ -84,6 +98,7 @@ def create_regulation(
 ) -> Regulation:
     regulation = Regulation(
         regulation_id=payload.regulation_id or _id("REG"),
+        organization_id=context.organization.organization_id,
         title=payload.title,
         document_no=payload.document_no,
         issuer=payload.issuer,
@@ -100,12 +115,19 @@ def create_regulation(
 
 @router.get("/regulations/{regulation_id}", response_model=RegulationRead)
 def get_regulation(regulation_id: str, context: CurrentContext, db: Session = Depends(get_db)) -> Regulation:
-    return _get_or_404(db, Regulation, regulation_id, "regulation")
+    return _get_regulation_for_context(db, regulation_id, context)
 
 
 @router.get("/regulations", response_model=list[RegulationRead])
 def list_regulations(context: CurrentContext, limit: int = 50, db: Session = Depends(get_db)) -> list[Regulation]:
-    return list(db.scalars(select(Regulation).order_by(Regulation.created_at.desc()).limit(min(limit, 200))))
+    return list(
+        db.scalars(
+            select(Regulation)
+            .where(Regulation.organization_id == context.organization.organization_id)
+            .order_by(Regulation.created_at.desc())
+            .limit(min(limit, 200))
+        )
+    )
 
 
 @router.post("/source-documents", response_model=SourceDocumentRead, status_code=status.HTTP_201_CREATED)
@@ -114,6 +136,7 @@ def create_source_document(
     context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
     db: Session = Depends(get_db),
 ) -> SourceDocument:
+    _validate_storage_key(payload.storage_key)
     if payload.task_id is not None:
         task = _get_or_404(db, Task, payload.task_id, "task")
         if task.organization_id != context.organization.organization_id:

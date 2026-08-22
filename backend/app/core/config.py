@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
     data_dir: str = "/data/regulatory-workbench"
+    web_origin: str = "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:18080"
     private_mode: bool = False
     private_org_name: str = "私有工作台"
     private_org_slug: str = "private-workbench"
@@ -24,9 +25,17 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = 120
+    llm_reviewer_required: bool = False
+    redis_readiness_required: bool = False
+    log_format: str = "text"
+    prometheus_enabled: bool = True
+    workflow_execution_mode: str = "celery"
+    workflow_allow_inline_fallback: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=(".env",),
+        # Local secrets belong in the ignored .env.local; .env remains the
+        # shared non-secret fallback for Docker and development defaults.
+        env_file=(".env", ".env.local"),
         env_prefix="",
         extra="ignore",
     )

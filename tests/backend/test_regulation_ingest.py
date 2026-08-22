@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from backend.app.db import model_registry  # noqa: F401
 from backend.app.db.base import Base
 from backend.app.db.session import get_db
 from backend.app.main import app
+from backend.app.services.ocr_fallback import OCRUnavailableError
+from backend.app.services.regulation_ingest import ParsedArticle, ParsedRegulation
 
 
 def build_fixture_pdf() -> bytes:
@@ -36,6 +39,14 @@ def build_fixture_pdf() -> bytes:
     for line in lines:
         document.drawString(24, y, line)
         y -= 20
+    document.save()
+    return stream.getvalue()
+
+
+def build_blank_pdf() -> bytes:
+    stream = BytesIO()
+    document = canvas.Canvas(stream, pagesize=(420, 594))
+    document.showPage()
     document.save()
     return stream.getvalue()
 
@@ -146,6 +157,209 @@ def test_private_mode_allows_single_team_api_without_login(tmp_path, monkeypatch
         listed = asyncio.run(request("GET", "/api/regulations"))
         assert listed.status_code == 200
         assert listed.json()[0]["title"] == "私有模式测试法规"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_scanned_pdf_uses_ocr_fallback_and_keeps_page_evidence(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ENABLE_OCR_FALLBACK", "true")
+    monkeypatch.setattr(
+        "backend.app.services.regulation_ingest.extract_ocr_pages",
+        lambda path, page_numbers: {
+            1: "财政部关于印发《测试扫描办法（2026年版）》的通知\n财金〔2026〕2号\n时间：2026-02-01\n测试扫描办法（2026年版）\n第一条 为规范扫描测试业务，制定本办法。"
+        },
+    )
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        registration = asyncio.run(
+            request(
+                "POST",
+                "/api/auth/register",
+                json={
+                    "email": "ocr-owner@example.com",
+                    "password": "correct-horse-battery-staple",
+                    "display_name": "OCR Owner",
+                    "organization_name": "OCR 测试机构",
+                    "organization_slug": "ocr-test",
+                },
+            )
+        )
+        headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+        response = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("扫描法规.pdf", build_blank_pdf(), "application/pdf")},
+                data={"version_label": "2026年版"},
+            )
+        )
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["article_count"] == 1
+        assert payload["sample_articles"][0]["source_page"] == 1
+        assert payload["sample_articles"][0]["source_offset"]["extraction_method"] == "ocr"
+        assert payload["source_document"]["document_metadata"]["extraction_summary"]["ocr_pages"] == [1]
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_scanned_pdf_without_ocr_does_not_register_empty_version(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    def unavailable(path, page_numbers):
+        raise OCRUnavailableError("OCR 兜底不可用，缺少命令：tesseract")
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("ENABLE_OCR_FALLBACK", "true")
+    monkeypatch.setattr("backend.app.services.regulation_ingest.extract_ocr_pages", unavailable)
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        registration = asyncio.run(
+            request(
+                "POST",
+                "/api/auth/register",
+                json={
+                    "email": "ocr-missing-owner@example.com",
+                    "password": "correct-horse-battery-staple",
+                    "display_name": "OCR Missing Owner",
+                    "organization_name": "OCR 缺失测试机构",
+                    "organization_slug": "ocr-missing-test",
+                },
+            )
+        )
+        headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+        response = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("缺少OCR法规.pdf", build_blank_pdf(), "application/pdf")},
+            )
+        )
+        assert response.status_code == 422, response.text
+        detail = response.json()["detail"]
+        assert detail["retryable"] is True
+        assert "OCR" in detail["message"] or "条款" in detail["message"]
+        assert (tmp_path / "documents" / detail["document_id"] / "缺少OCR法规.pdf").exists()
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_failed_parse_keeps_uploaded_file_and_retry_can_complete_import(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    parsed = ParsedRegulation(
+        title="可恢复测试办法（2026年版）",
+        document_no="财金〔2026〕3号",
+        issuer=["财政部"],
+        publish_date=date(2026, 2, 1),
+        effective_date=date(2026, 3, 1),
+        version_label="2026年版",
+        page_count=1,
+        articles=[
+            ParsedArticle(
+                article_no="第一条",
+                chapter_no=None,
+                article_order=1,
+                original_text="为验证失败后重试，制定本办法。",
+                source_page=1,
+                source_offset={"page": 1, "line_start": 1, "line_end": 1, "extraction_method": "pypdf"},
+            )
+        ],
+        warnings=[],
+        extraction_summary={"pypdf_pages": [1], "ocr_pages": [], "page_diagnostics": []},
+    )
+    parse_calls = {"count": 0}
+
+    def parse_with_one_failure(path, **kwargs):
+        parse_calls["count"] += 1
+        if parse_calls["count"] == 1:
+            raise ValueError("模拟解析失败")
+        return parsed
+
+    monkeypatch.setattr("backend.app.api.ingest.parse_pdf", parse_with_one_failure)
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        registration = asyncio.run(
+            request(
+                "POST",
+                "/api/auth/register",
+                json={
+                    "email": "retry-owner@example.com",
+                    "password": "correct-horse-battery-staple",
+                    "display_name": "Retry Owner",
+                    "organization_name": "Retry 测试机构",
+                    "organization_slug": "retry-test",
+                },
+            )
+        )
+        headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+        failed = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("可恢复法规.pdf", build_blank_pdf(), "application/pdf")},
+            )
+        )
+        assert failed.status_code == 422, failed.text
+        document_id = failed.json()["detail"]["document_id"]
+        storage_path = tmp_path / "documents" / document_id / "可恢复法规.pdf"
+        assert storage_path.exists()
+        assert failed.json()["detail"]["retryable"] is True
+
+        retried = asyncio.run(
+            request(
+                "POST",
+                f"/api/source-documents/{document_id}/retry-parse",
+                headers=headers,
+            )
+        )
+        assert retried.status_code == 201, retried.text
+        assert retried.json()["article_count"] == 1
+        assert retried.json()["source_document"]["document_metadata"]["parse_status"] == "parsed"
+        assert parse_calls["count"] == 2
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

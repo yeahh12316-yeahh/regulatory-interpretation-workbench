@@ -1,0 +1,61 @@
+{
+  "schema_version": "benchmark-v1",
+  "description": "外规解读 Agent 的多机构、多版式、多风险类型回归基线",
+  "cases": [
+    {
+      "case_id": "CASE-001",
+      "institution_type": "BANK",
+      "risk_type": "asset_quality",
+      "layout_type": "official_web_pdf",
+      "source_path": "benchmarks/sources/财政部关于印发《金融企业呆账核销管理办法（2017年版）》的通知.pdf",
+      "gold_path": "benchmarks/gold/case-001.json",
+      "expected": {"article_count": 25, "s5_status": "SKIPPED_BY_USER"},
+      "assertions": ["article_order_preserved", "numeric_facts_preserved", "evidence_required", "html_word_hash_equal"]
+    },
+    {
+      "case_id": "CASE-002",
+      "institution_type": "CONSUMER_FINANCE",
+      "risk_type": "credit_risk",
+      "layout_type": "single_column_pdf",
+      "source_path": "benchmarks/fixtures/case-002-consumer-finance-credit.txt",
+      "expected": {"article_count": 3, "s5_status": "WAITING_SOURCE_VERIFICATION"},
+      "assertions": ["applicability_has_basis", "obligation_strength_preserved", "deadline_preserved", "cross_org_isolation"]
+    },
+    {
+      "case_id": "CASE-003",
+      "institution_type": "FINANCE_COMPANY",
+      "risk_type": "asset_quality",
+      "layout_type": "two_column_pdf",
+      "source_path": "benchmarks/fixtures/case-003-finance-company-asset-quality.txt",
+      "expected": {"article_count": 3, "s5_status": "SKIPPED_BY_USER"},
+      "assertions": ["two_column_text_keeps_article_order", "threshold_preserved", "evidence_required"]
+    },
+    {
+      "case_id": "CASE-004",
+      "institution_type": "BANK",
+      "risk_type": "operational_risk",
+      "layout_type": "scanned_pdf",
+      "source_path": "benchmarks/fixtures/case-004-bank-operational-ocr.txt",
+      "expected": {"article_count": 2, "s5_status": "WAITING_SOURCE_VERIFICATION"},
+      "assertions": ["ocr_pages_marked_for_review", "source_locator_required", "no_unverified_publish"]
+    },
+    {
+      "case_id": "CASE-005",
+      "institution_type": "CONSUMER_FINANCE",
+      "risk_type": "market_risk",
+      "layout_type": "attachment_heavy_pdf",
+      "source_path": "benchmarks/fixtures/case-005-consumer-finance-market-attachment.txt",
+      "expected": {"article_count": 2, "s5_status": "WAITING_SOURCE_VERIFICATION"},
+      "assertions": ["attachment_boundary_preserved", "no_attachment_fabrication", "html_word_hash_equal"]
+    },
+    {
+      "case_id": "CASE-006",
+      "institution_type": "FINANCE_COMPANY",
+      "risk_type": "credit_risk",
+      "layout_type": "ocr_noise_pdf",
+      "source_path": "benchmarks/fixtures/case-006-finance-company-credit-ocr-noise.txt",
+      "expected": {"article_count": 2, "s5_status": "WAITING_SOURCE_VERIFICATION"},
+      "assertions": ["ocr_uncertainty_visible", "numeric_fact_not_guessed", "manual_gate_required"]
+    }
+  ]
+}

@@ -57,6 +57,8 @@ class Task(Base):
     regulation: Mapped[Regulation | None] = relationship(back_populates="tasks", foreign_keys=[regulation_id])
     audit_logs: Mapped[list[AuditLog]] = relationship(back_populates="task")
     qc_results: Mapped[list[QCResult]] = relationship(back_populates="task")
+    content_packages: Mapped[list[ContentPackage]] = relationship(back_populates="task")
+    workflow_runs: Mapped[list[WorkflowRun]] = relationship(back_populates="task", cascade="all, delete-orphan")
 
 
 class Organization(Base):
@@ -69,6 +71,7 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     tasks: Mapped[list[Task]] = relationship(back_populates="organization")
+    regulations: Mapped[list[Regulation]] = relationship(back_populates="organization")
     members: Mapped[list[OrganizationMember]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
 
@@ -127,6 +130,7 @@ class Regulation(Base):
     __tablename__ = "regulations"
 
     regulation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.organization_id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     document_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
     issuer: Mapped[list[str]] = mapped_column(JsonType, default=list, nullable=False)
@@ -137,10 +141,12 @@ class Regulation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     tasks: Mapped[list[Task]] = relationship(back_populates="regulation", foreign_keys=[Task.regulation_id])
+    organization: Mapped[Organization | None] = relationship(back_populates="regulations")
     versions: Mapped[list[RegulationVersion]] = relationship(back_populates="regulation", foreign_keys="RegulationVersion.regulation_id")
     evidence: Mapped[list[Evidence]] = relationship(back_populates="regulation")
     interpretations: Mapped[list[Interpretation]] = relationship(back_populates="regulation")
     version_relations: Mapped[list[VersionRelation]] = relationship(back_populates="regulation", foreign_keys="VersionRelation.regulation_id")
+    content_packages: Mapped[list[ContentPackage]] = relationship(back_populates="regulation")
 
 
 class RegulationVersion(Base):
@@ -249,6 +255,27 @@ class Interpretation(Base):
     regulation: Mapped[Regulation] = relationship(back_populates="interpretations")
     article: Mapped[Article | None] = relationship(back_populates="interpretations")
     evidence: Mapped[list[Evidence]] = relationship(secondary=interpretation_evidence, back_populates="interpretations")
+    content_versions: Mapped[list[ContentVersion]] = relationship(back_populates="interpretation", cascade="all, delete-orphan")
+
+
+class ContentVersion(Base):
+    __tablename__ = "content_versions"
+
+    content_version_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False)
+    interpretation_id: Mapped[str] = mapped_column(ForeignKey("interpretations.interpretation_id", ondelete="CASCADE"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="DRAFT", nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = json_column()
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    change_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    task: Mapped[Task] = relationship()
+    interpretation: Mapped[Interpretation] = relationship(back_populates="content_versions")
+
+    __table_args__ = (UniqueConstraint("interpretation_id", "version_number", name="uq_content_version_number"),)
 
 
 class Evidence(Base):
@@ -307,6 +334,54 @@ class QCResult(Base):
     task: Mapped[Task] = relationship(back_populates="qc_results")
 
 
+class WorkflowRun(Base):
+    __tablename__ = "workflow_runs"
+
+    workflow_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False)
+    workflow_type: Mapped[str] = mapped_column(String(64), default="REGULATION_INTERPRETATION", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
+    current_node: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    requested_from: Mapped[str] = mapped_column(String(32), default="S1", nullable=False)
+    params: Mapped[dict[str, Any]] = json_column()
+    error_state: Mapped[dict[str, Any]] = json_column()
+    celery_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_retries: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    parent_workflow_id: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    task: Mapped[Task] = relationship(back_populates="workflow_runs")
+    nodes: Mapped[list[WorkflowNode]] = relationship(back_populates="workflow", cascade="all, delete-orphan", order_by="WorkflowNode.sequence")
+
+
+class WorkflowNode(Base):
+    __tablename__ = "workflow_nodes"
+
+    node_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow_runs.workflow_id", ondelete="CASCADE"), nullable=False)
+    node_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output: Mapped[dict[str, Any]] = json_column()
+    error_state: Mapped[dict[str, Any]] = json_column()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    workflow: Mapped[WorkflowRun] = relationship(back_populates="nodes")
+
+    __table_args__ = (UniqueConstraint("workflow_id", "node_name", name="uq_workflow_node_name"),)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -321,3 +396,25 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     task: Mapped[Task | None] = relationship(back_populates="audit_logs")
+
+
+class ContentPackage(Base):
+    __tablename__ = "content_packages"
+
+    package_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False)
+    regulation_id: Mapped[str] = mapped_column(ForeignKey("regulations.regulation_id", ondelete="CASCADE"), nullable=False)
+    pipeline_run_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    package_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="HUMAN_LOCKED", nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_json: Mapped[dict[str, Any]] = json_column()
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    locked_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    task: Mapped[Task] = relationship(back_populates="content_packages")
+    regulation: Mapped[Regulation] = relationship(back_populates="content_packages")
+
+    __table_args__ = (UniqueConstraint("task_id", "package_version", name="uq_content_package_version"),)

@@ -3,6 +3,8 @@
 from backend.app.db.models import (  # noqa: F401
     Article,
     AuditLog,
+    ContentPackage,
+    ContentVersion,
     Evidence,
     Interpretation,
     Organization,
@@ -15,4 +17,6 @@ from backend.app.db.models import (  # noqa: F401
     Task,
     User,
     VersionRelation,
+    WorkflowNode,
+    WorkflowRun,
 )

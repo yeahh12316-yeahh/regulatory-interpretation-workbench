@@ -33,7 +33,12 @@ source_documents:
     download_status: 不作为本任务验收输入
 gold_standard:
   path: benchmarks/gold/case-001.json
-  status: READY_FOR_NON_S5_BODY_TEST
+  status: BODY_GOLD_BASELINE_FROZEN_METADATA_REVIEW_REQUIRED
+  acceptance_materials: docs/ACCEPTANCE_MATERIALS_CASE_001.md
+  body_article_count: 25
+  document_no_status: REGISTERED_EXTERNALLY_NOT_LOCATABLE_IN_USER_PDF
+  attachments_status: REFERRED_BUT_NOT_INCLUDED
+  manual_gold_status: BODY_ARTICLE_AND_HIGH_RISK_BASELINE_FROZEN_RUNTIME_OUTPUT_REVIEW_PENDING
   reason: 用户已提供2017年版4页打印版，当前可验收正文元数据、第一条至第二十五条和非S5页面；附录不在本次文件中，附录相关结论不得生成
 s5:
   status: SKIPPED_BY_USER

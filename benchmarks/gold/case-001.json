@@ -1,6 +1,77 @@
 {
   "case_id": "CASE-001",
-  "status": "READY_FOR_NON_S5_BODY_TEST",
+  "status": "BODY_GOLD_BASELINE_FROZEN_METADATA_REVIEW_REQUIRED",
+  "acceptance_materials": {
+    "record": "docs/ACCEPTANCE_MATERIALS_CASE_001.md",
+    "scope": "2017年版正文第一条至第二十五条，非S5",
+    "body_article_count": 25,
+    "document_no_status": "REGISTERED_EXTERNALLY_NOT_LOCATABLE_IN_USER_PDF",
+    "attachments_status": "REFERRED_IN_ARTICLES_5_TO_7_BUT_NOT_INCLUDED",
+    "manual_gold_status": "BODY_ARTICLE_AND_HIGH_RISK_BASELINE_FROZEN_RUNTIME_OUTPUT_REVIEW_PENDING"
+  },
+  "metadata_gold": {
+    "title": {"value": "金融企业呆账核销管理办法（2017年版）", "status": "LOCATABLE_IN_PDF", "page": 1},
+    "issuer": {"value": "财政部", "status": "LOCATABLE_IN_PDF", "page": 1},
+    "publish_date": {"value": "2017-08-31", "status": "LOCATABLE_IN_PDF", "page": 1},
+    "effective_date": {"value": "2017-10-01", "status": "LOCATABLE_IN_PDF", "page": 3, "article": 25},
+    "page_count": {"value": 4, "status": "VERIFIED_FROM_FILE"},
+    "article_count": {"value": 25, "status": "VERIFIED_FROM_TEXT"},
+    "document_no": {"value": "财金〔2017〕90号", "status": "REGISTERED_EXTERNALLY_NEEDS_MANUAL_CONFIRMATION", "page": null},
+    "attachments": {"value": ["附1", "附2", "附3"], "status": "REFERRED_BUT_NOT_INCLUDED", "articles": [5, 6, 7]}
+  },
+  "applicability_gold": {
+    "directly_applicable_scope": {"article": 2, "page": 1, "must_include": ["政策性银行", "国家开发银行", "商业银行", "保险公司", "金融资产管理公司", "证券公司", "信托公司", "财务公司", "金融租赁公司", "农村金融机构"]},
+    "reference_execution_scope": {"article": 2, "page": 1, "must_include": ["小额贷款公司", "融资担保公司"], "classification": "参照执行，不得改写为直接适用"},
+    "institution_context_does_not_change_source": true
+  },
+  "numeric_gold": [
+    {"value": "2年", "meaning": "责任认定和责任追究期限", "article": 19, "page": 3},
+    {"value": "5个月", "meaning": "年度终了后出具专项审计报告期限", "article": 20, "page": 3},
+    {"value": "6个月", "meaning": "年度终了后报送呆账核销情况和专项审计报告期限", "article": 20, "page": 3},
+    {"value": "2017年10月1日", "meaning": "办法施行日期", "article": 25, "page": 3},
+    {"value": "财金〔2015〕60号", "meaning": "同时废止的2015年修订版文号", "article": 25, "page": 3}
+  ],
+  "evidence_position_gold": {
+    "G01": {"article": 2, "page": 1},
+    "G02": {"article": 2, "page": 1},
+    "G03": {"article": 4, "page": 1},
+    "G04": {"articles": [5, 6, 7], "page": 2},
+    "G05": {"article": 8, "page": 2},
+    "G06": {"article": 12, "page": 2},
+    "G07": {"articles": [14, 15], "page": 2},
+    "G08": {"article": 16, "page": 3},
+    "G09": {"article": 18, "page": 3},
+    "G10": {"article": 19, "page": 3},
+    "G11": {"article": 20, "page": 3},
+    "G12": {"article": 25, "page": 3}
+  },
+  "article_index": [
+    {"article": 1, "page": 1, "chapter": "第一章 总则"},
+    {"article": 2, "page": 1, "chapter": "第一章 总则"},
+    {"article": 3, "page": 1, "chapter": "第一章 总则"},
+    {"article": 4, "page": 1, "chapter": "第一章 总则"},
+    {"article": 5, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 6, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 7, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 8, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 9, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 10, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 11, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 12, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 13, "page": 2, "chapter": "第二章 呆账核销条件及程序"},
+    {"article": 14, "page": 2, "chapter": "第三章 已核销资产管理"},
+    {"article": 15, "page": 2, "chapter": "第三章 已核销资产管理"},
+    {"article": 16, "page": 3, "chapter": "第三章 已核销资产管理"},
+    {"article": 17, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 18, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 19, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 20, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 21, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 22, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 23, "page": 3, "chapter": "第四章 监督与问责"},
+    {"article": 24, "page": 3, "chapter": "第五章 附则"},
+    {"article": 25, "page": 3, "chapter": "第五章 附则"}
+  ],
   "source_required": "用户提供的2017年版4页打印版；本任务不要求2015年版",
   "source_register": {
     "new_regulation": {
@@ -34,5 +105,33 @@
     "changes": [],
     "note": "用户明确本任务暂不做 S5，不生成新旧规比较结果。"
   },
-  "note": "本文件用于非S5正文验收的来源与状态占位；附录不在用户提供的4页文件中，附录相关 Gold 不生成。"
+  "article_gold": [
+    {"article": 1, "page": 1, "type": "PURPOSE_AND_BASIS", "normative_terms": [], "conditions": ["根据有关法律、法规和《金融企业财务规则》相关规定"], "numbers": [], "evidence_required": true},
+    {"article": 2, "page": 1, "type": "SCOPE", "normative_terms": ["适用于", "参照执行"], "conditions": ["在中华人民共和国境内依法设立"], "exceptions": ["小额贷款公司、融资担保公司等其他经营金融业务的企业为参照执行"], "numbers": [], "evidence_required": true},
+    {"article": 3, "page": 1, "type": "DEFINITION", "normative_terms": ["是指"], "conditions": ["符合本办法认定条件"], "numbers": [], "evidence_required": true},
+    {"article": 4, "page": 1, "type": "PRINCIPLE_AND_OBLIGATION", "normative_terms": ["应当", "要"], "conditions": ["核销后的呆账"], "exceptions": [], "numbers": [], "evidence_required": true},
+    {"article": 5, "page": 2, "type": "CONDITION_AND_PERMISSION", "normative_terms": ["可认定为"], "conditions": ["采取必要措施和实施必要程序", "符合附1所列认定标准之一"], "numbers": ["附1"], "evidence_required": true},
+    {"article": 6, "page": 2, "type": "CONDITION_AND_PERMISSION", "normative_terms": ["可认定为"], "conditions": ["采取必要措施和实施必要程序", "符合附2所列认定标准之一"], "numbers": ["附2"], "evidence_required": true},
+    {"article": 7, "page": 2, "type": "CONDITION_AND_PERMISSION", "normative_terms": ["可认定为"], "conditions": ["采取必要措施和实施必要程序", "符合附3所列认定标准之一"], "numbers": ["附3"], "evidence_required": true},
+    {"article": 8, "page": 2, "type": "MATERIAL_AND_EVIDENCE_REQUIREMENT", "normative_terms": ["应具备", "应提供", "可凭"], "conditions": ["无法取得外部证据时可凭内部证据"], "exceptions": ["未涉及法律诉讼或仲裁的，应说明未诉讼或仲裁理由"], "numbers": [], "evidence_required": true},
+    {"article": 9, "page": 2, "type": "CONDITION_AND_PERMISSION", "normative_terms": ["可以"], "conditions": ["同一金融企业多笔债务", "取得相关执行裁定"], "thresholds": ["担保条件不超过该笔债务的其余债务"], "numbers": [], "evidence_required": true},
+    {"article": 10, "page": 2, "type": "CONDITION_AND_PERMISSION", "normative_terms": ["可以"], "conditions": ["不同金融企业多笔债务", "取得相关执行裁定"], "thresholds": ["担保条件不超过该笔债务的其余债务"], "numbers": [], "evidence_required": true},
+    {"article": 11, "page": 2, "type": "OBLIGATION", "normative_terms": ["要", "及时"], "conditions": ["统筹风险管理、财务能力、内部控制、审慎合规、尽职追偿等因素"], "numbers": [], "evidence_required": true},
+    {"article": 12, "page": 2, "type": "APPROVAL_PROCEDURE", "normative_terms": ["要", "应当", "审批"], "conditions": ["履行内部审核程序", "有关部门集体审议", "有权人审批"], "numbers": [], "evidence_required": true},
+    {"article": 13, "page": 2, "type": "PROHIBITION", "normative_terms": ["不得"], "conditions": ["除法律法规和本办法的规定外"], "numbers": [], "evidence_required": true},
+    {"article": 14, "page": 2, "type": "POST_WRITEOFF_MANAGEMENT", "normative_terms": ["仍然享有", "要"], "conditions": ["权利义务未终结的已核销资产"], "exceptions": ["依据法律法规和本办法规定的权利义务已终结"], "numbers": [], "evidence_required": true},
+    {"article": 15, "page": 2, "type": "POST_WRITEOFF_RECOVERY", "normative_terms": ["要", "及时"], "conditions": ["发现有效财产线索", "获取财产线索证据"], "exceptions": ["权利义务已终结"], "numbers": [], "evidence_required": true},
+    {"article": 16, "page": 3, "type": "EXCEPTIONAL_TERMINATION", "normative_terms": ["可"], "conditions": ["符合列举条件之一"], "exceptions": ["不纳入账销案存资产管理"], "numbers": ["2年以上", "2年以上"], "evidence_required": true},
+    {"article": 17, "page": 3, "type": "RESPONSIBILITY", "normative_terms": ["要"], "conditions": ["金融企业是呆账核销的责任主体"], "numbers": [], "evidence_required": true},
+    {"article": 18, "page": 3, "type": "AUTHORITY", "normative_terms": ["可", "实行"], "conditions": ["按公司治理要求和授权机制行使核销权"], "numbers": [], "evidence_required": true},
+    {"article": 19, "page": 3, "type": "ACCOUNTABILITY", "normative_terms": ["应当"], "conditions": ["区分主观客观原因", "主观原因形成损失"], "numbers": ["2年内"], "evidence_required": true},
+    {"article": 20, "page": 3, "type": "AUDIT_AND_REPORTING", "normative_terms": ["应当", "应"], "conditions": ["建立专项审计制度", "定期或不定期审计"], "numbers": ["5个月内", "6个月内"], "evidence_required": true},
+    {"article": 21, "page": 3, "type": "RISK_PREVENTION", "normative_terms": ["应当", "按规定"], "conditions": ["内部运作", "风险隔离"], "numbers": [], "evidence_required": true},
+    {"article": 22, "page": 3, "type": "CONTINUOUS_IMPROVEMENT", "normative_terms": ["应当"], "conditions": ["通过审查、审计分析形成呆账和损失的原因"], "numbers": [], "evidence_required": true},
+    {"article": 23, "page": 3, "type": "SUPERVISION", "normative_terms": ["负责", "及时", "按规定"], "conditions": ["财政部门和金融监督管理部门事后监督和管理"], "numbers": [], "evidence_required": true},
+    {"article": 24, "page": 3, "type": "IMPLEMENTATION_RULES", "normative_terms": ["可以"], "conditions": ["履行公司治理程序确定后实施"], "numbers": [], "evidence_required": true},
+    {"article": 25, "page": 3, "type": "EFFECTIVE_AND_REPEAL", "normative_terms": ["施行", "废止"], "conditions": ["2017年10月1日起施行"], "numbers": ["2017年10月1日", "财金〔2015〕60号"], "evidence_required": true}
+  ],
+  "high_risk_fact_ids": ["G01", "G02", "G03", "G04", "G05", "G06", "G07", "G08", "G09", "G10", "G11", "G12"],
+  "note": "本文件已冻结非S5正文验收范围，但还不是可发布的完整人工Gold；附录不在用户提供的4页文件中，文号、Requirement、Interpretation和Evidence仍需人工确认。"
 }

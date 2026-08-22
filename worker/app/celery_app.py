@@ -15,3 +15,6 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
 )
+
+# Import task registrations when the worker starts.
+from worker.app import tasks as _tasks  # noqa: E402,F401

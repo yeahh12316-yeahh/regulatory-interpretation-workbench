@@ -23,12 +23,16 @@ services:
       ENABLE_OCR_FALLBACK: ${ENABLE_OCR_FALLBACK:-true}
       PRIVATE_MODE: ${PRIVATE_MODE:-false}
       DATA_DIR: ${DATA_DIR:-/data/regulatory-workbench}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:18080}
       PRIVATE_ORG_NAME: ${PRIVATE_ORG_NAME:-私有工作台}
       PRIVATE_ORG_SLUG: ${PRIVATE_ORG_SLUG:-private-workbench}
       LLM_PROVIDER: ${LLM_PROVIDER:-rule_based}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      LLM_REVIEWER_REQUIRED: ${LLM_REVIEWER_REQUIRED:-false}
+      WORKFLOW_EXECUTION_MODE: ${WORKFLOW_EXECUTION_MODE:-celery}
+      WORKFLOW_ALLOW_INLINE_FALLBACK: ${WORKFLOW_ALLOW_INLINE_FALLBACK:-false}
     ports:
       - "8000:8000"
     depends_on:
@@ -46,13 +50,19 @@ services:
 
   worker:
     build:
-      context: ./worker
+      context: .
+      dockerfile: worker/Dockerfile
     environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://regagent:change-me@postgres:5432/regagent}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      DATA_DIR: ${DATA_DIR:-/data/regulatory-workbench}
+      WORKFLOW_EXECUTION_MODE: ${WORKFLOW_EXECUTION_MODE:-celery}
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - api_data:/data/regulatory-workbench
 
   postgres:
     image: postgres:16-alpine
