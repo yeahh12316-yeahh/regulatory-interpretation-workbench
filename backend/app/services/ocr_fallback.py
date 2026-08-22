@@ -89,6 +89,7 @@ def extract_ocr_pages(
                     text=True,
                     timeout=timeout_seconds,
                 )
+                image_candidates[0].unlink(missing_ok=True)
             except OCRUnavailableError:
                 raise
             except (OSError, subprocess.SubprocessError) as exc:
@@ -100,7 +101,7 @@ def extract_ocr_pages(
         # worker count bounded so a public upload does not spend minutes
         # processing scanned pages serially, while preserving deterministic
         # page-numbered evidence after collection.
-        worker_count = min(4, len(unique_pages))
+        worker_count = min(2, len(unique_pages))
         with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="regulation-ocr") as executor:
             futures = [executor.submit(extract_page, page_number) for page_number in unique_pages]
             for future in as_completed(futures):
