@@ -40,6 +40,7 @@ import {
 import { apiClient } from './lib/api-client'
 import { runtimeConfig } from './lib/runtime-config'
 import { chooseCurrentTask, mapApiTaskToWorkbenchTask } from './lib/task-persistence'
+import { selectTaskState } from './lib/task-selection'
 
 const tasks = [
   {
@@ -771,6 +772,37 @@ function App() {
     openImportModal('previous')
   }
 
+  async function selectRemoteTask(taskId) {
+    const nextState = selectTaskState(taskId)
+    setActiveTask(nextState.activeTask)
+    setPipelineTaskId(nextState.pipelineTaskId)
+    setPipelineResult(nextState.pipelineResult)
+    setWorkflowState(nextState.workflowState)
+    setReviewState(nextState.reviewState)
+    setActiveRegulationId(nextState.activeRegulationId)
+    persistCurrentTaskId(taskId)
+    navigate('task')
+    if (session?.mode !== 'api' || !session.accessToken) return
+
+    setPipelineBusy(true)
+    setPipelineError('')
+    try {
+      const workflow = await apiClient.taskWorkflow(taskId, session.accessToken).catch(() => null)
+      if (!workflow) return
+      setWorkflowState(workflow)
+      if (workflow.status !== 'completed') return
+      const result = await apiClient.interpretation(taskId, session.accessToken)
+      setPipelineResult(result)
+      setReviewState(result)
+      setActiveRegulationId(result.task?.regulation_id || null)
+    } catch (requestError) {
+      setPipelineError(requestError.message || '任务载入失败，请稍后重试')
+      notify(requestError.message || '任务载入失败，请稍后重试')
+    } finally {
+      setPipelineBusy(false)
+    }
+  }
+
   function handleEvidenceUpload(event) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -818,6 +850,8 @@ function App() {
     setWorkflowState(null)
     notify(`已登记法规：${result.article_count} 条款可定位`)
     if (result.task_id) void runPipelineForTask(result.task_id)
+    setImportModalOpen(false)
+    setImportMode('new')
   }
 
   async function monitorWorkflow(workflowId) {
@@ -1015,7 +1049,7 @@ function App() {
               <button
                 className={`task-row ${activeTask === task.id ? 'is-active' : ''}`}
                 key={task.id}
-                onClick={() => { setActiveTask(task.id); navigate('task') }}
+                onClick={() => { void selectRemoteTask(task.id) }}
               >
                 <span className={`task-dot ${task.state}`} />
                 <span className="task-main">
