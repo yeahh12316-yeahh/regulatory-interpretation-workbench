@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from backend.app.core.config import get_settings
 from backend.app.db import model_registry  # noqa: F401
 from backend.app.db.base import Base
-from backend.app.db.models import RegulationVersion, SourceDocument
+from backend.app.db.models import RegulationVersion, SourceDocument, Task
 from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.ocr_fallback import OCRUnavailableError
@@ -586,6 +586,82 @@ def test_failed_parse_keeps_uploaded_file_and_retry_can_complete_import(tmp_path
         assert retried.json()["article_count"] == 1
         assert retried.json()["source_document"]["document_metadata"]["parse_status"] == "parsed"
         assert parse_calls["count"] == 2
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_stale_background_parse_is_marked_failed_and_retryable(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("PUBLIC_GUEST_MODE", "true")
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        guest = asyncio.run(request("POST", "/api/auth/guest"))
+        assert guest.status_code == 200
+        guest_payload = guest.json()
+        task_id = "TASK_STALE_PARSE"
+        document_id = "DOC_STALE_PARSE"
+        stale_started = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        with Session(engine) as session:
+            session.add(
+                Task(
+                    task_id=task_id,
+                    task_name="扫描法规解析",
+                    created_by=guest_payload["user"]["email"],
+                    organization_id=guest_payload["organization_id"],
+                    owner_id=guest_payload["user"]["user_id"],
+                    task_status="processing",
+                    current_step="INPUT",
+                )
+            )
+            session.add(
+                SourceDocument(
+                    document_id=document_id,
+                    task_id=task_id,
+                    file_name="扫描法规.pdf",
+                    source_type="official_pdf",
+                    storage_key="documents/DOC_STALE_PARSE/扫描法规.pdf",
+                    mime_type="application/pdf",
+                    sha256="0" * 64,
+                    document_metadata={
+                        "parse_status": "processing",
+                        "parse_attempts": 1,
+                        "parse_started_at": stale_started,
+                        "retryable": True,
+                    },
+                )
+            )
+            session.commit()
+
+        response = asyncio.run(
+            request(
+                "GET",
+                f"/api/source-documents/{document_id}/parse-status",
+                headers={"Authorization": f"Bearer {guest_payload['access_token']}"},
+            )
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "failed"
+        assert response.json()["retryable"] is True
+        assert "超过 5 分钟" in response.json()["message"]
+        with Session(engine) as session:
+            task = session.get(Task, task_id)
+            assert task.task_status == "failed"
+            assert task.error_state["retryable"] is True
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,6 +21,11 @@ from backend.app.services.regulation_ingest import ParsedRegulation, parse_pdf, 
 
 router = APIRouter(prefix="/api", tags=["regulation-ingest"])
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+PARSE_PROCESSING_TIMEOUT_SECONDS = 300
+
+
+class StaleParseAttempt(RuntimeError):
+    """Raised when an older OCR attempt must not overwrite a newer state."""
 
 
 def _id(prefix: str) -> str:
@@ -241,6 +247,46 @@ def _mark_parse_failed(db: Session, document_id: str, error: str, *, attempt: in
     db.commit()
 
 
+def _mark_stale_parse_if_needed(db: Session, document: SourceDocument) -> bool:
+    metadata = document.document_metadata or {}
+    if metadata.get("parse_status") not in {"processing", "retrying"}:
+        return False
+    started_raw = metadata.get("parse_started_at")
+    if not isinstance(started_raw, str):
+        return False
+    try:
+        started_at = datetime.fromisoformat(started_raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    age_seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
+    if age_seconds < PARSE_PROCESSING_TIMEOUT_SECONDS:
+        return False
+    attempt = int(metadata.get("parse_attempts", 1))
+    _mark_parse_failed(
+        db,
+        document.document_id,
+        f"后台 PDF 解析超过 {PARSE_PROCESSING_TIMEOUT_SECONDS // 60} 分钟，已停止等待，请点击重试",
+        attempt=attempt,
+    )
+    return True
+
+
+def _assert_active_parse_attempt(db: Session, document_id: str, attempt: int) -> None:
+    document = db.get(SourceDocument, document_id)
+    if document is None:
+        raise StaleParseAttempt("source document no longer exists")
+    metadata = document.document_metadata or {}
+    parse_status = metadata.get("parse_status")
+    current_attempt = int(metadata.get("parse_attempts", 0))
+    if parse_status in {"processing", "retrying"} and current_attempt == attempt:
+        return
+    if parse_status == "uploaded" and current_attempt == 0:
+        return
+    raise StaleParseAttempt("parse attempt is no longer active")
+
+
 def _parse_uploaded_document(
     *,
     db: Session,
@@ -252,6 +298,7 @@ def _parse_uploaded_document(
     attempt: int,
 ) -> RegulationImportRead:
     settings = get_settings()
+    _assert_active_parse_attempt(db, document_id, attempt)
     try:
         parsed = parse_pdf(path, enable_ocr=settings.enable_ocr_fallback)
     except Exception as exc:
@@ -281,6 +328,7 @@ def _parse_uploaded_document(
             },
         )
 
+    _assert_active_parse_attempt(db, document_id, attempt)
     document = db.get(SourceDocument, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="source document not found")
@@ -300,12 +348,18 @@ def _parse_document_background(**kwargs: object) -> None:
     with SessionLocal() as db:
         try:
             _parse_uploaded_document(db=db, **kwargs)
+        except StaleParseAttempt:
+            return
         except Exception:
             # _parse_uploaded_document records the detailed retryable state;
             # the background task must not crash the web worker or emit a
             # second response after the upload has already been acknowledged.
             document = db.get(SourceDocument, document_id)
-            if document is not None and document.document_metadata.get("parse_status") not in {"failed", "parsed"}:
+            if (
+                document is not None
+                and document.document_metadata.get("parse_status") not in {"failed", "parsed"}
+                and int(document.document_metadata.get("parse_attempts", 0)) == attempt
+            ):
                 _mark_parse_failed(db, document_id, "后台 PDF 解析失败，请点击重试", attempt=attempt)
 
 
@@ -368,6 +422,7 @@ async def import_regulation(
                 **existing_document.document_metadata,
                 "parse_status": "retrying",
                 "parse_attempts": attempts,
+                "parse_started_at": datetime.now(timezone.utc).isoformat(),
             }
             existing_task.task_status = "uploading"
             db.commit()
@@ -445,7 +500,12 @@ async def import_regulation(
         "attempt": 1,
     }
     if pdf_requires_ocr(storage_path) and db.bind.dialect.name != "sqlite":
-        document.document_metadata = {**document.document_metadata, "parse_status": "processing"}
+        document.document_metadata = {
+            **document.document_metadata,
+            "parse_status": "processing",
+            "parse_attempts": 1,
+            "parse_started_at": datetime.now(timezone.utc).isoformat(),
+        }
         task.task_status = "processing"
         db.commit()
         background_tasks.add_task(_parse_document_background, **kwargs)
@@ -475,6 +535,7 @@ async def retry_parse(
         **document.document_metadata,
         "parse_status": "retrying",
         "parse_attempts": attempts,
+        "parse_started_at": datetime.now(timezone.utc).isoformat(),
     }
     task.task_status = "uploading"
     db.commit()
@@ -487,7 +548,11 @@ async def retry_parse(
         "attempt": attempts,
     }
     if pdf_requires_ocr(path) and db.bind.dialect.name != "sqlite":
-        document.document_metadata = {**document.document_metadata, "parse_status": "processing"}
+        document.document_metadata = {
+            **document.document_metadata,
+            "parse_status": "processing",
+            "parse_started_at": datetime.now(timezone.utc).isoformat(),
+        }
         db.commit()
         background_tasks.add_task(_parse_document_background, **kwargs)
         return _pending_read(document)
@@ -504,6 +569,8 @@ def parse_status(
     task = db.get(Task, document.task_id) if document and document.task_id else None
     if document is None or task is None or task.organization_id != context.organization.organization_id:
         raise HTTPException(status_code=404, detail="source document not found")
+    if _mark_stale_parse_if_needed(db, document):
+        db.refresh(document)
     metadata = document.document_metadata or {}
     parse_state = metadata.get("parse_status") or "uploaded"
     result = _import_read_for_document(db, document) if parse_state == "parsed" else None
