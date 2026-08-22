@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { apiClient } from './lib/api-client'
 import { runtimeConfig } from './lib/runtime-config'
+import { chooseCurrentTask, mapApiTaskToWorkbenchTask } from './lib/task-persistence'
 
 const tasks = [
   {
@@ -87,6 +88,7 @@ const toc = [
 ]
 
 const SESSION_STORAGE_KEY = 'regulatory-workbench-session'
+const CURRENT_TASK_STORAGE_KEY = 'regulatory-workbench-current-task'
 
 function readSession() {
   try {
@@ -107,6 +109,23 @@ function demoSession() {
 
 function persistSession(session) {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+}
+
+function readCurrentTaskId() {
+  try {
+    return window.localStorage.getItem(CURRENT_TASK_STORAGE_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+function persistCurrentTaskId(taskId) {
+  if (!taskId) return
+  try {
+    window.localStorage.setItem(CURRENT_TASK_STORAGE_KEY, taskId)
+  } catch {
+    // A private browsing context may reject local persistence; the API remains authoritative.
+  }
 }
 
 function AuthScreen({ onAuthenticated, onPreview }) {
@@ -600,7 +619,8 @@ function App() {
   const [toast, setToast] = useState('')
   const [accessPanelOpen, setAccessPanelOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
-  const [pipelineTaskId, setPipelineTaskId] = useState(null)
+  const [workbenchTasks, setWorkbenchTasks] = useState(tasks)
+  const [pipelineTaskId, setPipelineTaskId] = useState(readCurrentTaskId)
   const [pipelineResult, setPipelineResult] = useState(null)
   const [pipelineBusy, setPipelineBusy] = useState(false)
   const [pipelineError, setPipelineError] = useState('')
@@ -612,8 +632,8 @@ function App() {
   const s5ComparisonStatus = pipelineResult?.stages?.S5?.output?.comparison_status
 
   const filteredTasks = useMemo(
-    () => tasks.filter((task) => task.title.includes(query) || task.institution.includes(query)),
-    [query],
+    () => workbenchTasks.filter((task) => task.title.includes(query) || task.institution.includes(query)),
+    [query, workbenchTasks],
   )
 
   function notify(message) {
@@ -636,8 +656,34 @@ function App() {
 
   useEffect(() => {
     if (session?.mode !== 'api' || !session.accessToken) return undefined
-    apiClient.me(session.accessToken).catch(() => {})
-    return undefined
+    let cancelled = false
+    async function hydrateRemoteWorkbench() {
+      try {
+        const [me, remoteTasks] = await Promise.all([
+          apiClient.me(session.accessToken),
+          apiClient.tasks(session.accessToken),
+        ])
+        if (cancelled) return
+        void me
+        setWorkbenchTasks(remoteTasks.map(mapApiTaskToWorkbenchTask))
+        const currentTaskId = chooseCurrentTask(remoteTasks, readCurrentTaskId())
+        if (!currentTaskId) return
+        persistCurrentTaskId(currentTaskId)
+        setPipelineTaskId(currentTaskId)
+        const workflow = await apiClient.taskWorkflow(currentTaskId, session.accessToken).catch(() => null)
+        if (cancelled || !workflow) return
+        setWorkflowState(workflow)
+        if (workflow.status !== 'completed') return
+        const result = await apiClient.interpretation(currentTaskId, session.accessToken)
+        if (cancelled) return
+        setPipelineResult(result)
+        setReviewState(result)
+      } catch {
+        // The public page keeps its honest empty/preview state if the API is waking up.
+      }
+    }
+    hydrateRemoteWorkbench()
+    return () => { cancelled = true }
   }, [session?.mode, session?.accessToken])
 
   useEffect(() => {
@@ -714,6 +760,12 @@ function App() {
     }, ...items])
     setSelectedEvidence(evidenceId)
     setPipelineTaskId(result.task_id || null)
+    persistCurrentTaskId(result.task_id)
+    if (session?.accessToken) {
+      apiClient.tasks(session.accessToken)
+        .then((remoteTasks) => setWorkbenchTasks(remoteTasks.map(mapApiTaskToWorkbenchTask)))
+        .catch(() => {})
+    }
     setPipelineResult(null)
     setReviewState(null)
     setPipelineError('')

@@ -6,6 +6,15 @@
 
 第 1—15 项已完成工程实现；第 16 项已完成真实法规的准生产工程验收，但正式发布仍受人工复核、正式来源和公网生产环境闸门约束。本机 Docker Desktop、Docker Compose、PostgreSQL、Redis、Worker、MinIO 和 Prometheus 已运行。
 
+## 第 1 步公网真实上传闭环：最新验收补充（2026-08-22）
+
+- 已用项目内 2017 年版公开法规 PDF 在 Render 公网匿名接口完成真实上传和解析：4 页、25 条款、SHA-256 与本地文件一致。
+- 已在同一匿名公开网页会话中完成“上传并登记”和“运行 S1—S4”；S1、S2、S3、S4 为 `completed`，S5 因无可核验旧规保持 `skipped`。
+- 已验证前端显示 56 条 Requirement、25 条逐条 Interpretation 和 25 条 Evidence，任务状态保持 `waiting_review`，未伪造正式发布。
+- 发现并修复公开网页刷新后不恢复真实任务的问题：新增 API 任务列表读取、当前任务持久化和已完成 Workflow/解读结果恢复；新增 `tests/frontend/task_persistence.test.mjs`。
+- 修复后的本地验证：前端持久化测试 2 passed、后端回归 39 passed、Benchmark 6 cases / 20 assertions / 0 asset errors、生产构建通过。
+- 公开网页测试仍遵守边界：文号缺失继续显示待人工确认，附1—附3缺失继续保留待补充，S5 不生成差异结论；本步不进入人工 QC、Content Package、LLM 或正式发布。
+
 | 步骤 | 状态 | 说明 |
 |---|---|---|
 | 第 1 步：冻结产品边界 | 已完成 | 面向多类型金融机构，只做外规识别、适用性、条款拆解、解读、证据和交付物 |

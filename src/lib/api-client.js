@@ -44,6 +44,8 @@ export const apiClient = {
     if (options.sourceUrl) form.append('source_url', options.sourceUrl)
     return request('/regulations/import', { method: 'POST', body: form }, token)
   },
+  tasks: (token) => request('/tasks', {}, token),
+  task: (taskId, token) => request(`/tasks/${taskId}`, {}, token),
   retryRegulationParse: (documentId, token) => request(`/source-documents/${documentId}/retry-parse`, { method: 'POST' }, token),
   articles: (regulationId, versionId, token) => request(`/regulations/${regulationId}/versions/${versionId}/articles`, {}, token),
   article: (articleId, token) => request(`/articles/${articleId}`, {}, token),
