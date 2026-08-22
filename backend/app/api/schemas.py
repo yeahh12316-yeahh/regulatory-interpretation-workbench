@@ -173,6 +173,8 @@ class RequirementRead(BaseModel):
 
     requirement_id: str
     article_id: str
+    article_no: str | None = None
+    article_order: int | None = None
     subject: str | None
     rule_type: str
     action: str | None
@@ -198,6 +200,8 @@ class InterpretationRead(BaseModel):
     interpretation_id: str
     regulation_id: str
     article_id: str | None
+    article_no: str | None = None
+    article_order: int | None = None
     summary: str | None
     interpretation: str | None
     regulatory_meaning: str | None

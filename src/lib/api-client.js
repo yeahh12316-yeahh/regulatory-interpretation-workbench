@@ -1,5 +1,5 @@
 import { runtimeConfig } from './runtime-config'
-import { formatRequestFailure, isTransientStatus, retryDelay } from './request-retry'
+import { fetchWithTimeout, formatRequestFailure, isTransientStatus, requestTimeoutMs, retryDelay } from './request-retry'
 
 async function request(path, options = {}, accessToken, retryOptions = {}) {
   const headers = new Headers(options.headers || {})
@@ -10,7 +10,11 @@ async function request(path, options = {}, accessToken, retryOptions = {}) {
   const retries = retryOptions.retries ?? ((options.method || 'GET').toUpperCase() === 'GET' ? 2 : 0)
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, { ...options, headers })
+      const response = await fetchWithTimeout(
+        `${runtimeConfig.apiBaseUrl}${path}`,
+        { ...options, headers },
+        requestTimeoutMs({ path, method: options.method }),
+      )
       const payload = await response.json().catch(() => ({}))
       if (response.ok) return payload
       if (response.status === 401 && accessToken) {
@@ -39,7 +43,7 @@ async function requestReadiness(retries = 4) {
   const base = runtimeConfig.apiBaseUrl.replace(/\/api\/?$/, '') || '/'
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const response = await fetch(`${base}/ready`, { headers: { Accept: 'application/json' } })
+      const response = await fetchWithTimeout(`${base}/ready`, { headers: { Accept: 'application/json' } }, requestTimeoutMs({ path: '/ready', phase: 'readiness' }), 'readiness')
       const payload = await response.json().catch(() => ({}))
       if (response.ok && payload.status === 'ready') return payload
       if (attempt < retries) {

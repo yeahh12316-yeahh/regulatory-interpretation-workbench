@@ -226,6 +226,14 @@ class Requirement(Base):
     article: Mapped[Article] = relationship(back_populates="requirements")
     evidence: Mapped[list[Evidence]] = relationship(secondary=requirement_evidence, back_populates="requirements")
 
+    @property
+    def article_no(self) -> str | None:
+        return self.article.article_no if self.article is not None else None
+
+    @property
+    def article_order(self) -> int | None:
+        return self.article.article_order if self.article is not None else None
+
 
 class Interpretation(Base):
     __tablename__ = "interpretations"
@@ -256,6 +264,14 @@ class Interpretation(Base):
     article: Mapped[Article | None] = relationship(back_populates="interpretations")
     evidence: Mapped[list[Evidence]] = relationship(secondary=interpretation_evidence, back_populates="interpretations")
     content_versions: Mapped[list[ContentVersion]] = relationship(back_populates="interpretation", cascade="all, delete-orphan")
+
+    @property
+    def article_no(self) -> str | None:
+        return self.article.article_no if self.article is not None else None
+
+    @property
+    def article_order(self) -> int | None:
+        return self.article.article_order if self.article is not None else None
 
 
 class ContentVersion(Base):

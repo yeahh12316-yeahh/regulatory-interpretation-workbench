@@ -447,7 +447,7 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
         onReviewChanged(next)
         return next
       })
-      notify(`已保存 ${item.article_id} 监管要求复核`)
+      notify(`已保存 ${item.article_no || item.article_id} 监管要求复核`)
     } catch (requestError) { setError(requestError.message || '监管要求保存失败') } finally { setBusy(false) }
   }
 
@@ -469,7 +469,7 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
         onReviewChanged(next)
         return next
       })
-      notify(`已保存 ${item.article_id || '整体'} 解读复核`)
+      notify(`已保存 ${item.article_no || item.article_id || '整体'} 解读复核`)
     } catch (requestError) { setError(requestError.message || '解读保存失败') } finally { setBusy(false) }
   }
 
@@ -595,11 +595,11 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
 }
 
 function ReviewRequirementCard({ item, onChange, onSave, busy }) {
-  return <div className="review-item-card"><div className="review-item-head"><strong>{item.article_id}</strong><StatusTag tone={item.review_status === 'reviewed' ? 'green' : 'review'}>{item.review_status}</StatusTag></div><div className="review-original"><span>不可编辑的原文片段</span><p>{item.source_text}</p></div><div className="review-fields"><label>主体<input value={item.subject || ''} onChange={(event) => onChange(item.requirement_id, 'subject', event.target.value)} /></label><label>行为<input value={item.action || ''} onChange={(event) => onChange(item.requirement_id, 'action', event.target.value)} /></label><label>条件/例外<input value={[item.condition, item.exception].filter(Boolean).join('；')} onChange={(event) => onChange(item.requirement_id, 'condition', event.target.value)} /></label><label>时限/频率<input value={[item.deadline, item.frequency, item.threshold].filter(Boolean).join('；')} onChange={(event) => onChange(item.requirement_id, 'deadline', event.target.value)} /></label></div><div className="review-item-actions"><span>证据：{item.evidence_ids?.length || 1} 条 · 原文保持不变</span><button className="review-small-button" onClick={() => onChange(item.requirement_id, 'review_status', item.review_status === 'reviewed' ? 'reviewing' : 'reviewed')}><Check size={13} />{item.review_status === 'reviewed' ? '取消复核' : '标记已复核'}</button><button className="review-save" onClick={() => onSave(item)} disabled={busy}><Save size={13} />保存</button></div></div>
+  return <div className="review-item-card"><div className="review-item-head"><strong>{item.article_no || item.article_id}</strong><StatusTag tone={item.review_status === 'reviewed' ? 'green' : 'review'}>{item.review_status}</StatusTag></div><div className="review-original"><span>不可编辑的原文片段</span><p>{item.source_text}</p></div><div className="review-fields"><label>主体<input value={item.subject || ''} onChange={(event) => onChange(item.requirement_id, 'subject', event.target.value)} /></label><label>行为<input value={item.action || ''} onChange={(event) => onChange(item.requirement_id, 'action', event.target.value)} /></label><label>条件/例外<input value={[item.condition, item.exception].filter(Boolean).join('；')} onChange={(event) => onChange(item.requirement_id, 'condition', event.target.value)} /></label><label>时限/频率<input value={[item.deadline, item.frequency, item.threshold].filter(Boolean).join('；')} onChange={(event) => onChange(item.requirement_id, 'deadline', event.target.value)} /></label></div><div className="review-item-actions"><span>证据：{item.evidence_ids?.length || 1} 条 · 原文保持不变</span><button className="review-small-button" onClick={() => onChange(item.requirement_id, 'review_status', item.review_status === 'reviewed' ? 'reviewing' : 'reviewed')}><Check size={13} />{item.review_status === 'reviewed' ? '取消复核' : '标记已复核'}</button><button className="review-save" onClick={() => onSave(item)} disabled={busy}><Save size={13} />保存</button></div></div>
 }
 
 function ReviewInterpretationCard({ item, onChange, onSave, busy }) {
-  return <div className="review-item-card"><div className="review-item-head"><strong>{item.article_id || '整体解读'}</strong><StatusTag tone={item.review_status === 'reviewed' && item.human_lock ? 'green' : 'review'}>{item.review_status === 'reviewed' && item.human_lock ? '已复核并锁定' : '待复核'}</StatusTag></div><label className="review-wide-label">摘要<input value={item.summary || ''} onChange={(event) => onChange(item.interpretation_id, 'summary', event.target.value)} /></label><label className="review-wide-label">解读<textarea rows="3" value={item.interpretation || ''} onChange={(event) => onChange(item.interpretation_id, 'interpretation', event.target.value)} /></label><div className="review-block-summary">{(item.content_blocks || []).map((block) => <span key={block.label}>{block.label} · {block.evidence_ids?.length || 0} 条证据</span>)}</div><div className="review-item-actions"><button className="review-small-button" onClick={() => onChange(item.interpretation_id, 'review_status', item.review_status === 'reviewed' ? 'reviewing' : 'reviewed')}><Check size={13} />{item.review_status === 'reviewed' ? '取消复核' : '标记已复核'}</button><button className="review-small-button" onClick={() => onChange(item.interpretation_id, 'human_lock', !item.human_lock)}>{item.human_lock ? <Lock size={13} /> : <ShieldCheck size={13} />}{item.human_lock ? '已锁定' : '锁定解读'}</button><button className="review-save" onClick={() => onSave(item)} disabled={busy}><Save size={13} />保存</button></div></div>
+  return <div className="review-item-card"><div className="review-item-head"><strong>{item.article_no || item.article_id || '整体解读'}</strong><StatusTag tone={item.review_status === 'reviewed' && item.human_lock ? 'green' : 'review'}>{item.review_status === 'reviewed' && item.human_lock ? '已复核并锁定' : '待复核'}</StatusTag></div><label className="review-wide-label">摘要<input value={item.summary || ''} onChange={(event) => onChange(item.interpretation_id, 'summary', event.target.value)} /></label><label className="review-wide-label">解读<textarea rows="3" value={item.interpretation || ''} onChange={(event) => onChange(item.interpretation_id, 'interpretation', event.target.value)} /></label><div className="review-block-summary">{(item.content_blocks || []).map((block) => <span key={block.label}>{block.label} · {block.evidence_ids?.length || 0} 条证据</span>)}</div><div className="review-item-actions"><button className="review-small-button" onClick={() => onChange(item.interpretation_id, 'review_status', item.review_status === 'reviewed' ? 'reviewing' : 'reviewed')}><Check size={13} />{item.review_status === 'reviewed' ? '取消复核' : '标记已复核'}</button><button className="review-small-button" onClick={() => onChange(item.interpretation_id, 'human_lock', !item.human_lock)}>{item.human_lock ? <Lock size={13} /> : <ShieldCheck size={13} />}{item.human_lock ? '已锁定' : '锁定解读'}</button><button className="review-save" onClick={() => onSave(item)} disabled={busy}><Save size={13} />保存</button></div></div>
 }
 
 function App() {
@@ -1302,7 +1302,7 @@ function CoreRequirements({ onEvidence, pipelineResult }) {
       <div className="pipeline-summary"><strong>已结构化 {pipelineResult.requirements.length} 条监管要求</strong><span>原子化动作：{pipelineResult.requirements.length} 条 · 数字表达：{s3.numeric_expression_count || 0} 个 · 规范词：{s3.normative_term_count || 0} 个</span>{s3.review_flags?.length > 0 && <small>复核提示：{s3.review_flags.join('；')}</small>}</div>
       <div className="requirement-list">
         {pipelineResult.requirements.slice(0, 24).map((requirement) => <button className="requirement-card" key={requirement.requirement_id} onClick={() => onEvidence(pipelineResult.evidence.find((item) => item.article_id === requirement.article_id)?.evidence_id)}>
-          <div className="requirement-card-head"><span>{requirement.rule_type}</span><strong>{requirement.article_id}</strong><StatusTag tone="review">待复核</StatusTag></div>
+          <div className="requirement-card-head"><span>{requirement.rule_type}</span><strong>{requirement.article_no || requirement.article_id}</strong><StatusTag tone="review">待复核</StatusTag></div>
           <p>{requirement.source_text}</p>
           <div className="requirement-grid"><span>主体</span><strong>{requirement.subject || '待确认'}</strong><span>行为/强度</span><strong>{[requirement.action, requirement.structured_data?.action_strength_level].filter(Boolean).join(' · ') || '未识别'}</strong><span>条件/例外</span><strong>{[requirement.condition, requirement.exception].filter(Boolean).join('；') || '未识别'}</strong><span>数字/时限</span><strong>{[requirement.deadline, requirement.frequency, requirement.threshold].filter(Boolean).join('；') || (requirement.structured_data?.numbers || []).map((item) => item.original_expression).join('、') || '未识别'}</strong></div>
         </button>)}
@@ -1325,7 +1325,11 @@ function CoreRequirements({ onEvidence, pipelineResult }) {
 
 function ClauseInterpretation({ onEvidence, pipelineResult }) {
   if (pipelineResult) {
-    const articleInterpretations = pipelineResult.article_interpretations.slice(0, 12)
+    const articleInterpretations = [...pipelineResult.article_interpretations].sort((left, right) => {
+      const leftOrder = left.article_order ?? Number.MAX_SAFE_INTEGER
+      const rightOrder = right.article_order ?? Number.MAX_SAFE_INTEGER
+      return leftOrder - rightOrder || String(left.article_no || left.article_id).localeCompare(String(right.article_no || right.article_id), 'zh-CN')
+    })
     const s4 = pipelineResult.stages?.S4?.output || {}
     const changeReady = s4.change_interpretation_status === 'GENERATED_NEEDS_REVIEW'
     return <section>
@@ -1333,7 +1337,7 @@ function ClauseInterpretation({ onEvidence, pipelineResult }) {
       <div className="pipeline-summary"><strong>整体解读已生成，当前状态：待人工复核</strong><span>{pipelineResult.overall.interpretation}</span><small>{changeReady ? `变化解读已生成 ${s4.change_interpretation_count || 0} 条，具体监管含义仍需人工复核。` : 'S5尚未形成可核验比较结果，本次未生成变化解读。'}</small></div>
       <div className="interpretation-list">
         {articleInterpretations.map((item) => <article className="interpretation-card" key={item.interpretation_id}>
-          <div className="interpretation-card-head"><strong>{item.article_id}</strong><StatusTag tone="review">待人工复核</StatusTag></div>
+          <div className="interpretation-card-head"><strong>{item.article_no || item.article_id}</strong><StatusTag tone="review">待人工复核</StatusTag></div>
           <h3>{item.summary}</h3>
           <p>{item.interpretation}</p>
           <div className="content-blocks">{item.content_blocks.map((block) => <div key={block.label} className={`content-block content-${block.label.toLowerCase()}`}><span>{block.label}</span><p>{block.text}</p></div>)}</div>

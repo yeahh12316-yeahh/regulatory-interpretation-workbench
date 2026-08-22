@@ -104,6 +104,9 @@ def test_s1_to_s4_pipeline_generates_traceable_review_results(tmp_path, monkeypa
         assert s2_output["version_relation"]["evidence_required"] is True
         assert payload["requirements"]
         assert payload["article_interpretations"]
+        assert [item["article_order"] for item in payload["article_interpretations"]] == sorted(item["article_order"] for item in payload["article_interpretations"])
+        assert payload["article_interpretations"][0]["article_no"] == "第一条"
+        assert [item["article_order"] for item in payload["requirements"]] == sorted(item["article_order"] for item in payload["requirements"])
         assert all(item["review_status"] == "needs_review" for item in payload["requirements"])
         assert all({"FACT", "OFFICIAL", "INTERPRETATION"}.issubset({block["label"] for block in item["content_blocks"]}) for item in payload["article_interpretations"])
         assert all(item["evidence_ids"] for block in payload["overall"]["content_blocks"] for item in [block])

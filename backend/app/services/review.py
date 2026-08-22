@@ -13,6 +13,7 @@ from backend.app.core.config import get_settings
 from backend.app.db.models import Article, AuditLog, Evidence, Interpretation, QCResult, Requirement, RegulationVersion, Task
 from backend.app.services.evidence_service import validate_evidence_chain
 from backend.app.services.qc_rules import run_rule_checks
+from backend.app.services.result_ordering import order_article_records
 
 
 REVIEW_STATUSES = {"needs_review", "reviewing", "reviewed"}
@@ -76,10 +77,10 @@ def get_latest_review_objects(db: Session, task: Task) -> dict[str, Any]:
     overall = next((item for item in interpretations if item.article_id is None), None)
     if overall is None:
         raise ValueError("S4结果缺少整体解读")
-    articles = [item for item in interpretations if item.article_id is not None]
-    requirements = list(
+    articles = order_article_records([item for item in interpretations if item.article_id is not None])
+    requirements = order_article_records(list(
         db.scalars(select(Requirement).where(Requirement.pipeline_run_id == run_id).order_by(Requirement.article_id, Requirement.requirement_id))
-    )
+    ))
     article_ids = {item.article_id for item in articles}
     evidence = list(
         db.scalars(

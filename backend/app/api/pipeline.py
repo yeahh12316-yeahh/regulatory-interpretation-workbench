@@ -16,6 +16,7 @@ from backend.app.db.models import Evidence, Interpretation, Requirement, Task
 from backend.app.db.session import get_db
 from backend.app.security import AuthContext, CurrentContext, require_roles
 from backend.app.services.interpretation_pipeline import run_s1_s4_pipeline
+from backend.app.services.result_ordering import order_article_records
 
 
 router = APIRouter(prefix="/api", tags=["interpretation-pipeline"])
@@ -47,14 +48,14 @@ def _read_result(db: Session, task: Task) -> PipelineRunRead:
     overall = next((item for item in interpretations if item.article_id is None), None)
     if overall is None:
         raise HTTPException(status_code=409, detail="S4结果缺少整体解读")
-    article_interpretations = [item for item in interpretations if item.article_id is not None]
-    requirements = list(
+    article_interpretations = order_article_records([item for item in interpretations if item.article_id is not None])
+    requirements = order_article_records(list(
         db.scalars(
             select(Requirement)
             .where(Requirement.pipeline_run_id == run_id)
             .order_by(Requirement.article_id, Requirement.requirement_id)
         )
-    )
+    ))
     article_ids = {item.article_id for item in article_interpretations}
     evidence = list(
         db.scalars(
@@ -118,8 +119,8 @@ def list_pipeline_requirements(
     run_id = _latest_run_id(task)
     if not run_id:
         raise HTTPException(status_code=404, detail="S1-S4 尚未运行")
-    return list(
+    return order_article_records(list(
         db.scalars(
             select(Requirement).where(Requirement.pipeline_run_id == run_id).order_by(Requirement.article_id, Requirement.requirement_id)
         )
-    )
+    ))
