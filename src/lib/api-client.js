@@ -1,31 +1,64 @@
 import { runtimeConfig } from './runtime-config'
+import { formatRequestFailure, isTransientStatus, retryDelay } from './request-retry'
 
-async function request(path, options = {}, accessToken) {
+async function request(path, options = {}, accessToken, retryOptions = {}) {
   const headers = new Headers(options.headers || {})
   headers.set('Accept', 'application/json')
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
 
-  const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, { ...options, headers })
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    if (response.status === 401 && accessToken) {
-      window.dispatchEvent(new CustomEvent('regulatory-workbench-auth-expired'))
+  const retries = retryOptions.retries ?? ((options.method || 'GET').toUpperCase() === 'GET' ? 2 : 0)
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, { ...options, headers })
+      const payload = await response.json().catch(() => ({}))
+      if (response.ok) return payload
+      if (response.status === 401 && accessToken) {
+        window.dispatchEvent(new CustomEvent('regulatory-workbench-auth-expired'))
+      }
+      if (isTransientStatus(response.status) && attempt < retries) {
+        await new Promise((resolve) => window.setTimeout(resolve, retryDelay(attempt)))
+        continue
+      }
+      const detail = payload.detail
+      const message = typeof detail === 'string' ? detail : detail?.message || `请求失败（${response.status}）`
+      const error = new Error(message)
+      error.status = response.status
+      error.detail = detail
+      error.documentId = detail?.document_id
+      error.retryable = detail?.retryable === true || isTransientStatus(response.status)
+      throw error
+    } catch (cause) {
+      if (cause?.status || attempt >= retries) throw formatRequestFailure(cause)
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelay(attempt)))
     }
-    const detail = payload.detail
-    const message = typeof detail === 'string' ? detail : detail?.message || `请求失败（${response.status}）`
-    const error = new Error(message)
-    error.status = response.status
-    error.detail = detail
-    error.documentId = detail?.document_id
-    error.retryable = detail?.retryable === true
-    throw error
   }
-  return payload
+}
+
+async function requestReadiness(retries = 4) {
+  const base = runtimeConfig.apiBaseUrl.replace(/\/api\/?$/, '') || '/'
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${base}/ready`, { headers: { Accept: 'application/json' } })
+      const payload = await response.json().catch(() => ({}))
+      if (response.ok && payload.status === 'ready') return payload
+      if (attempt < retries) {
+        await new Promise((resolve) => window.setTimeout(resolve, retryDelay(attempt)))
+        continue
+      }
+      const error = new Error(payload.detail || `公开服务尚未就绪（${response.status}）`)
+      error.retryable = true
+      throw error
+    } catch (cause) {
+      if (attempt >= retries) throw formatRequestFailure(cause)
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelay(attempt)))
+    }
+  }
 }
 
 export const apiClient = {
-  guestSession: () => request('/auth/guest', { method: 'POST' }),
+  waitUntilReady: () => requestReadiness(),
+  guestSession: () => request('/auth/guest', { method: 'POST' }, undefined, { retries: 3 }),
   login: (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   register: (body) => request('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   me: (token) => request('/auth/me', {}, token),
@@ -35,14 +68,17 @@ export const apiClient = {
   addMember: (token, body) => request('/organizations/current/members', { method: 'POST', body: JSON.stringify(body) }, token),
   updateMemberRole: (token, memberId, body) => request(`/organizations/current/members/${memberId}`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   switchOrganization: (token, organizationId) => request('/auth/switch-organization', { method: 'POST', body: JSON.stringify({ organization_id: organizationId }) }, token),
-  importRegulation: (file, options = {}, token) => {
+  importRegulation: async (file, options = {}, token) => {
+    await requestReadiness()
     const form = new FormData()
     form.append('file', file)
     if (options.taskId) form.append('task_id', options.taskId)
     if (options.regulationId) form.append('regulation_id', options.regulationId)
     if (options.versionLabel) form.append('version_label', options.versionLabel)
+    if (options.versionRole) form.append('version_role', options.versionRole)
+    if (options.uploadId) form.append('upload_id', options.uploadId)
     if (options.sourceUrl) form.append('source_url', options.sourceUrl)
-    return request('/regulations/import', { method: 'POST', body: form }, token)
+    return request('/regulations/import', { method: 'POST', body: form, headers: options.uploadId ? { 'Idempotency-Key': options.uploadId } : {} }, token, { retries: 3 })
   },
   tasks: (token) => request('/tasks', {}, token),
   task: (taskId, token) => request(`/tasks/${taskId}`, {}, token),

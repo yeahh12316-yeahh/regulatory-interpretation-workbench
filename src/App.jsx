@@ -287,7 +287,7 @@ function StatusTag({ children, tone = 'neutral' }) {
   return <span className={`status-tag status-${tone}`}>{children}</span>
 }
 
-function RegulationImportModal({ session, onClose, onImported }) {
+function RegulationImportModal({ session, onClose, onImported, taskId = null, regulationId = null, versionRole = 'current' }) {
   const [file, setFile] = useState(null)
   const [versionLabel, setVersionLabel] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
@@ -295,6 +295,7 @@ function RegulationImportModal({ session, onClose, onImported }) {
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
   const [failedUpload, setFailedUpload] = useState(null)
+  const [uploadId] = useState(() => window.crypto?.randomUUID?.() || `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`)
 
   async function submit(event) {
     event.preventDefault()
@@ -310,7 +311,7 @@ function RegulationImportModal({ session, onClose, onImported }) {
     }
     setBusy(true)
     try {
-      const nextResult = await apiClient.importRegulation(file, { versionLabel, sourceUrl }, session.accessToken)
+      const nextResult = await apiClient.importRegulation(file, { taskId, regulationId, versionLabel, versionRole, sourceUrl, uploadId }, session.accessToken)
       setResult(nextResult)
       onImported(nextResult)
     } catch (requestError) {
@@ -343,11 +344,11 @@ function RegulationImportModal({ session, onClose, onImported }) {
   return <div className="modal-overlay" onClick={onClose}>
     <section className="regulation-import-modal" onClick={(event) => event.stopPropagation()}>
       <div className="modal-header">
-        <div><span className="modal-kicker">STEP 9 · INPUT</span><h2>上传法规原文</h2></div>
+        <div><span className="modal-kicker">STEP 9 · INPUT</span><h2>{versionRole === 'previous' ? '补充旧规原文' : '上传法规原文'}</h2></div>
         <IconButton label="关闭法规上传" onClick={onClose}><X size={18} /></IconButton>
       </div>
       {!result ? <form className="import-form" onSubmit={submit}>
-        <p className="modal-description">上传 PDF 后，系统会先保存原文件并计算哈希，再提取页面文本；扫描页会尝试 OCR 兜底，并把“第×条”原文保存为带页码/行号的可定位条款。</p>
+        <p className="modal-description">上传 PDF 后，系统会先唤醒并检查公开服务，再保存原文件、计算哈希和提取页面文本；扫描页会尝试 OCR 兜底，并把“第×条”原文保存为带页码/行号的可定位条款。</p>
         <label className="file-dropzone">
           <FileUp size={24} />
           <strong>{file ? file.name : '选择法规 PDF'}</strong>
@@ -356,7 +357,7 @@ function RegulationImportModal({ session, onClose, onImported }) {
         </label>
         <label>版本标签（可选）<input value={versionLabel} onChange={(event) => setVersionLabel(event.target.value)} placeholder="例如：2017年版" /></label>
         <label>官方来源地址（可选）<input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://..." /></label>
-        <div className="import-boundary"><strong>本步处理范围</strong><span>原文件不会因解析失败被删除；失败后可直接重新解析。OCR 提取的页面会标记为“需人工核验”，不会把 OCR 文字当作未经复核的正式结论。</span></div>
+        <div className="import-boundary"><strong>本步处理范围</strong><span>{versionRole === 'previous' ? '该文件将登记为当前法规的前一版本，不会覆盖当前版本；完成上传后系统会重新运行 S1—S4，并在版本关系确认后运行 S5。' : '原文件不会因解析失败被删除；失败后可直接重新解析。OCR 提取的页面会标记为“需人工核验”，不会把 OCR 文字当作未经复核的正式结论。'}</span></div>
         {!runtimeConfig.apiConfigured && <div className="import-warning">当前公开预览没有连接后端，不会假装上传成功。私有部署配置 API 后，此按钮才会执行真实登记。</div>}
         {error && <div className="auth-error"><AlertCircle size={15} />{error}</div>}
         {failedUpload && <div className="import-retry"><strong>文件已安全保存，可继续重试</strong><span>来源文件编号：{failedUpload.documentId}</span><button type="button" className="modal-secondary" onClick={retryParse} disabled={busy}>{busy ? '重新解析中…' : '重新解析已保存文件'}</button></div>}
@@ -619,8 +620,10 @@ function App() {
   const [toast, setToast] = useState('')
   const [accessPanelOpen, setAccessPanelOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importMode, setImportMode] = useState('new')
   const [workbenchTasks, setWorkbenchTasks] = useState(tasks)
   const [pipelineTaskId, setPipelineTaskId] = useState(readCurrentTaskId)
+  const [activeRegulationId, setActiveRegulationId] = useState(null)
   const [pipelineResult, setPipelineResult] = useState(null)
   const [pipelineBusy, setPipelineBusy] = useState(false)
   const [pipelineError, setPipelineError] = useState('')
@@ -630,6 +633,11 @@ function App() {
   const [lastReport, setLastReport] = useState(null)
   const fileInputRef = useRef(null)
   const s5ComparisonStatus = pipelineResult?.stages?.S5?.output?.comparison_status
+  const s5Notice = s5ComparisonStatus === 'COMPLETED'
+    ? ['新旧规比较已完成，变化结果待人工复核', '系统已完成条款级新增、删除、修改和数字变化识别；S5 不自动扩展为内部制度或整改结论。', 'S5 已完成']
+    : s5ComparisonStatus === 'WAITING_RELATION_CONFIRMATION'
+      ? ['旧规已登记，版本关系待确认', '两份原文和哈希已登记；完成有权人员确认后，系统才生成 S5 差异矩阵。', 'S5 待确认']
+      : ['2017 年版新规已载入', '当前文件正文已登记；补充可核验旧规原文后，才进入 S5 版本比较。', '新规已载入']
 
   const filteredTasks = useMemo(
     () => workbenchTasks.filter((task) => task.title.includes(query) || task.institution.includes(query)),
@@ -644,10 +652,17 @@ function App() {
   useEffect(() => {
     function handleAuthExpired() {
       window.localStorage.removeItem(SESSION_STORAGE_KEY)
+      window.localStorage.removeItem(CURRENT_TASK_STORAGE_KEY)
       setSession(null)
+      setWorkbenchTasks([])
+      setPipelineTaskId(null)
+      setActiveRegulationId(null)
+      setPipelineResult(null)
+      setWorkflowState(null)
+      setReviewState(null)
       setAccessPanelOpen(false)
       setImportModalOpen(false)
-      notify('登录已过期，请重新登录后继续使用')
+      notify('公开工作空间已失效，正在重新创建匿名空间')
     }
 
     window.addEventListener('regulatory-workbench-auth-expired', handleAuthExpired)
@@ -667,8 +682,16 @@ function App() {
         void me
         setWorkbenchTasks(remoteTasks.map(mapApiTaskToWorkbenchTask))
         const currentTaskId = chooseCurrentTask(remoteTasks, readCurrentTaskId())
-        if (!currentTaskId) return
+        if (!currentTaskId) {
+          setPipelineTaskId(null)
+          setActiveRegulationId(null)
+          setPipelineResult(null)
+          setWorkflowState(null)
+          setReviewState(null)
+          return
+        }
         persistCurrentTaskId(currentTaskId)
+        setActiveTask(currentTaskId)
         setPipelineTaskId(currentTaskId)
         const workflow = await apiClient.taskWorkflow(currentTaskId, session.accessToken).catch(() => null)
         if (cancelled || !workflow) return
@@ -678,8 +701,9 @@ function App() {
         if (cancelled) return
         setPipelineResult(result)
         setReviewState(result)
+        setActiveRegulationId(result.task?.regulation_id || null)
       } catch {
-        // The public page keeps its honest empty/preview state if the API is waking up.
+        // The request layer retries cold-start failures; the UI keeps the last verified state if retries exhaust.
       }
     }
     hydrateRemoteWorkbench()
@@ -723,8 +747,28 @@ function App() {
 
   function logout() {
     window.localStorage.removeItem(SESSION_STORAGE_KEY)
+    window.localStorage.removeItem(CURRENT_TASK_STORAGE_KEY)
     setSession(null)
+    setPipelineTaskId(null)
+    setActiveRegulationId(null)
+    setPipelineResult(null)
+    setWorkflowState(null)
+    setReviewState(null)
     setAccessPanelOpen(false)
+  }
+
+  function openImportModal(mode = 'new') {
+    setImportMode(mode)
+    setImportModalOpen(true)
+  }
+
+  function openPreviousVersionUpload() {
+    const regulationId = activeRegulationId || pipelineResult?.task?.regulation_id
+    if (!pipelineTaskId || !regulationId) {
+      notify('请先载入当前法规并完成 S1—S4，再补充旧规原文')
+      return
+    }
+    openImportModal('previous')
   }
 
   function handleEvidenceUpload(event) {
@@ -760,6 +804,8 @@ function App() {
     }, ...items])
     setSelectedEvidence(evidenceId)
     setPipelineTaskId(result.task_id || null)
+    setActiveTask(result.task_id || '')
+    setActiveRegulationId(result.regulation?.regulation_id || null)
     persistCurrentTaskId(result.task_id)
     if (session?.accessToken) {
       apiClient.tasks(session.accessToken)
@@ -771,6 +817,7 @@ function App() {
     setPipelineError('')
     setWorkflowState(null)
     notify(`已登记法规：${result.article_count} 条款可定位`)
+    if (result.task_id) void runPipelineForTask(result.task_id)
   }
 
   async function monitorWorkflow(workflowId) {
@@ -784,10 +831,11 @@ function App() {
     throw new Error('工作流运行时间过长，请稍后在任务进度中继续查看')
   }
 
-  async function loadWorkflowResult() {
-    const result = await apiClient.interpretation(pipelineTaskId, session?.accessToken)
+  async function loadWorkflowResult(taskId = pipelineTaskId) {
+    const result = await apiClient.interpretation(taskId, session?.accessToken)
     setPipelineResult(result)
     setReviewState(result)
+    setActiveRegulationId(result.task?.regulation_id || activeRegulationId)
     const evidence = (result.evidence || []).map((item) => ({
       id: item.evidence_id,
       title: `${item.locator?.article_no || '条款'} 原文证据`,
@@ -802,30 +850,35 @@ function App() {
     return result
   }
 
-  async function runPipeline() {
+  async function runPipelineForTask(taskId) {
     if (!runtimeConfig.apiConfigured) {
       notify('当前公开预览未连接后端，私有部署配置 API 后才能运行 S1—S4')
       return
     }
-    if (!pipelineTaskId) {
+    if (!taskId) {
       notify('请先上传法规，系统会自动创建解读任务')
       return
     }
     setPipelineBusy(true)
     setPipelineError('')
     try {
-      const workflow = await apiClient.startWorkflow(pipelineTaskId, { institution_type: '商业银行', business_scope: ['呆账核销'], region: '中国境内' }, session?.accessToken)
+      const workflow = await apiClient.startWorkflow(taskId, { institution_type: '商业银行', business_scope: ['呆账核销'], region: '中国境内' }, session?.accessToken)
       setWorkflowState(workflow)
       const finished = workflow.status === 'completed' ? workflow : await monitorWorkflow(workflow.workflow_id)
       if (finished.status !== 'completed') throw new Error(finished.error_state?.message || '工作流运行失败，请查看失败节点并重试')
-      const result = await loadWorkflowResult()
-      notify(`Workflow 已完成，生成 ${result.requirements.length} 条监管要求，待人工复核`)
+      const result = await loadWorkflowResult(taskId)
+      const s5Status = result.stages?.S5?.output?.comparison_status
+      notify(s5Status === 'COMPLETED' ? `Workflow 已完成，S1—S5 已完成，生成 ${result.requirements.length} 条监管要求` : `Workflow 已完成，生成 ${result.requirements.length} 条监管要求，S5 等待版本关系确认`)
     } catch (requestError) {
       setPipelineError(requestError.message || 'Workflow 运行失败')
       notify(requestError.message || 'Workflow 运行失败')
     } finally {
       setPipelineBusy(false)
     }
+  }
+
+  async function runPipeline() {
+    await runPipelineForTask(pipelineTaskId)
   }
 
   async function retryWorkflow() {
@@ -954,7 +1007,7 @@ function App() {
 
           <div className="task-list-header">
             <span>全部任务（{filteredTasks.length}）</span>
-            <div className="task-list-header-actions"><button className="upload-regulation-button" onClick={() => setImportModalOpen(true)}><FileUp size={13} /> 上传法规</button><button className="quiet-button" aria-label="任务排序" onClick={() => notify('任务排序：最近更新')}><SlidersHorizontal size={14} /></button></div>
+            <div className="task-list-header-actions"><button className="upload-regulation-button" onClick={() => openImportModal('new')}><FileUp size={13} /> 上传法规</button><button className="quiet-button" aria-label="任务排序" onClick={() => notify('任务排序：最近更新')}><SlidersHorizontal size={14} /></button></div>
           </div>
 
           <div className="task-list">
@@ -1004,7 +1057,7 @@ function App() {
         </aside>
 
         <main className="content-pane">
-          {activePage === 'task' ? <>
+          {activePage === 'task' && (session?.mode !== 'api' || pipelineTaskId) ? <>
           <div className="content-toolbar">
             <div className="article-title-wrap">
               <span className="article-symbol">§</span>
@@ -1029,10 +1082,10 @@ function App() {
             <section className="notice-panel">
               <div className="notice-icon"><AlertCircle size={18} /></div>
               <div>
-                <strong>{s5ComparisonStatus === 'COMPLETED' ? '新旧规比较已完成，变化结果待人工复核' : '2017 年版新规已载入，本任务暂不生成 S5 差异结论'}</strong>
-                <p>{s5ComparisonStatus === 'COMPLETED' ? '系统已完成条款级新增、删除、修改和数字变化识别；S5 不自动扩展为内部制度或整改结论。' : '当前文件正文覆盖第一条至第二十五条；附件未包含在本次 PDF 中，涉及附件时会明确提示并停止生成结论。'}</p>
+                <strong>{s5Notice[0]}</strong>
+                <p>{s5Notice[1]}</p>
               </div>
-              <StatusTag tone={s5ComparisonStatus === 'COMPLETED' ? 'review' : 'green'}>{s5ComparisonStatus === 'COMPLETED' ? 'S5 已完成' : '新规已载入'}</StatusTag>
+              <StatusTag tone={s5ComparisonStatus === 'COMPLETED' ? 'review' : 'green'}>{s5Notice[2]}</StatusTag>
             </section>
 
             {pipelineError && <div className="pipeline-error"><AlertCircle size={15} />{pipelineError}</div>}
@@ -1040,14 +1093,14 @@ function App() {
             {activeTab === '概览' && <Overview onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} onRun={runPipeline} pipelineBusy={pipelineBusy} />}
             {activeTab === '核心要求' && <CoreRequirements onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} />}
             {activeTab === '条款解读' && <ClauseInterpretation onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} />}
-            {activeTab === '版本比较' && <CompareView onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} taskId={pipelineTaskId} session={session} onCompared={(stage) => setPipelineResult((current) => current ? { ...current, stages: { ...current.stages, S5: stage } } : current)} notify={notify} />}
+            {activeTab === '版本比较' && <CompareView onEvidence={(id) => setSelectedEvidence(id)} pipelineResult={pipelineResult} taskId={pipelineTaskId} session={session} onAddPrevious={openPreviousVersionUpload} onCompared={(stage) => setPipelineResult((current) => current ? { ...current, stages: { ...current.stages, S5: stage } } : current)} notify={notify} />}
           </div>
-          </> : <div className="page-scroll">
+          </> : activePage === 'task' ? <div className="page-scroll"><div className="page-empty"><FileUp size={26} /><strong>当前匿名空间还没有任务</strong><span>上传一份法规原文后，系统会自动创建任务、解析 PDF 并运行 S1—S4。</span><button className="section-action" onClick={() => openImportModal('new')}>上传法规</button></div></div> : <div className="page-scroll">
             {activePage === 'home' && <HomePage onNavigate={navigate} pipelineResult={pipelineResult} workflowState={workflowState} reviewState={reviewState} />}
             {activePage === 'workflow' && <WorkflowPage workflow={workflowState} onRun={runPipeline} onRetry={retryWorkflow} onRerun={rerunWorkflowNode} busy={pipelineBusy} />}
             {activePage === 'interpretation' && <InterpretationPage pipelineResult={pipelineResult} onNavigate={navigate} onRun={runPipeline} pipelineBusy={pipelineBusy} />}
             {activePage === 'clause' && <ClausePage pipelineResult={pipelineResult} onEvidence={(id) => setSelectedEvidence(id)} />}
-            {activePage === 'compare' && <ComparePage pipelineResult={pipelineResult} taskId={pipelineTaskId} session={session} onCompared={(stage) => setPipelineResult((current) => current ? { ...current, stages: { ...current.stages, S5: stage } } : current)} notify={notify} onEvidence={(id) => setSelectedEvidence(id)} />}
+            {activePage === 'compare' && <ComparePage pipelineResult={pipelineResult} taskId={pipelineTaskId} session={session} onAddPrevious={openPreviousVersionUpload} onCompared={(stage) => setPipelineResult((current) => current ? { ...current, stages: { ...current.stages, S5: stage } } : current)} notify={notify} onEvidence={(id) => setSelectedEvidence(id)} />}
             {activePage === 'review' && <ReviewPage reviewState={reviewState} onOpen={openReviewPanel} onRun={runPipeline} />}
             {activePage === 'reports' && <ReportCenterPage reviewState={reviewState} lastReport={lastReport} onExport={handleExport} />}
           </div>}
@@ -1083,7 +1136,7 @@ function App() {
 
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
       {accessPanelOpen && <AccessPanel session={session} onClose={() => setAccessPanelOpen(false)} onSessionChange={setSession} onLogout={logout} notify={notify} />}
-      {importModalOpen && <RegulationImportModal session={session} onClose={() => setImportModalOpen(false)} onImported={handleRegulationImported} />}
+      {importModalOpen && <RegulationImportModal session={session} taskId={importMode === 'previous' ? pipelineTaskId : null} regulationId={importMode === 'previous' ? (activeRegulationId || pipelineResult?.task?.regulation_id) : null} versionRole={importMode === 'previous' ? 'previous' : 'current'} onClose={() => setImportModalOpen(false)} onImported={handleRegulationImported} />}
       {reviewPanelOpen && <ReviewPanel session={session} taskId={pipelineTaskId} onClose={() => setReviewPanelOpen(false)} onReviewChanged={(nextReview) => { setReviewState(nextReview); setPipelineResult(nextReview) }} notify={notify} />}
     </div>
   )
@@ -1112,7 +1165,7 @@ function HomePage({ onNavigate, pipelineResult, workflowState, reviewState }) {
 }
 
 function WorkflowPage({ workflow, onRun, onRetry, onRerun, busy }) {
-  return <section className="page-content"><PageHeader eyebrow="Workflow" title="任务执行流程" description="每个节点都保存状态和检查点；失败后可以重试或重跑指定节点。" action={<button className="run-pipeline-button" onClick={onRun} disabled={busy}>{busy ? '运行中…' : '启动 Workflow'} <Sparkles size={14} /></button>} />{workflow ? <WorkflowProgress workflow={workflow} onRetry={onRetry} onRerun={onRerun} busy={busy} /> : <div className="page-empty"><Network size={24} /><strong>当前任务尚未启动 Workflow</strong><span>启动后会依次执行 S1—S5，并在此显示实时进度。</span><button className="section-action" onClick={onRun}>启动任务</button></div>}<section className="page-panel"><div className="page-panel-head"><strong>节点说明</strong><span className="eyebrow">证据优先</span></div><div className="workflow-description-grid">{[['S1', '法规识别', '元数据、来源文件和待确认字段'], ['S2', '适用性与版本定位', '机构、业务、地域和版本关系'], ['S3', '条款拆解', '监管要求、规范词和数字表达'], ['S4', '整体与逐条解读', 'FACT、OFFICIAL、INTERPRETATION 内容块'], ['S5', '新旧规比较', '无可核验旧规时保持跳过']].map(([code, title, note]) => <div key={code}><strong>{code}</strong><span>{title}</span><small>{note}</small></div>)}</div></section></section>
+  return <section className="page-content"><PageHeader eyebrow="Workflow" title="任务执行流程" description="每个节点都保存状态和检查点；失败后可以重试或重跑指定节点。" action={<button className="run-pipeline-button" onClick={onRun} disabled={busy}>{busy ? '运行中…' : '启动 Workflow'} <Sparkles size={14} /></button>} />{workflow ? <WorkflowProgress workflow={workflow} onRetry={onRetry} onRerun={onRerun} busy={busy} /> : <div className="page-empty"><Network size={24} /><strong>当前任务尚未启动 Workflow</strong><span>启动后会依次执行 S1—S5，并在此显示实时进度。</span><button className="section-action" onClick={onRun}>启动任务</button></div>}<section className="page-panel"><div className="page-panel-head"><strong>节点说明</strong><span className="eyebrow">证据优先</span></div><div className="workflow-description-grid">{[['S1', '法规识别', '元数据、来源文件和待确认字段'], ['S2', '适用性与版本定位', '机构、业务、地域和版本关系'], ['S3', '条款拆解', '监管要求、规范词和数字表达'], ['S4', '整体与逐条解读', 'FACT、OFFICIAL、INTERPRETATION 内容块'], ['S5', '新旧规比较', '没有旧规时明确阻断，不生成差异结论']].map(([code, title, note]) => <div key={code}><strong>{code}</strong><span>{title}</span><small>{note}</small></div>)}</div></section></section>
 }
 
 function InterpretationPage({ pipelineResult, onNavigate, onRun, pipelineBusy }) {
@@ -1123,8 +1176,8 @@ function ClausePage({ pipelineResult, onEvidence }) {
   return <section className="page-content"><PageHeader eyebrow="条款解读" title="逐条监管要求与解读" description="原文片段保持不变，监管要求、内容块和证据定位分开呈现。" /><ClauseInterpretation onEvidence={onEvidence} pipelineResult={pipelineResult} /></section>
 }
 
-function ComparePage({ pipelineResult, taskId, session, onCompared, notify, onEvidence }) {
-  return <section className="page-content"><PageHeader eyebrow="版本比较" title="新旧规比较" description="只有旧规全文、版本关系和文件哈希均可核验时才生成差异结论。" /><CompareView onEvidence={onEvidence} pipelineResult={pipelineResult} taskId={taskId} session={session} onCompared={onCompared} notify={notify} /></section>
+function ComparePage({ pipelineResult, taskId, session, onAddPrevious, onCompared, notify, onEvidence }) {
+  return <section className="page-content"><PageHeader eyebrow="版本比较" title="新旧规比较" description="只有旧规全文、版本关系和文件哈希均可核验时才生成差异结论。" /><CompareView onEvidence={onEvidence} pipelineResult={pipelineResult} taskId={taskId} session={session} onAddPrevious={onAddPrevious} onCompared={onCompared} notify={notify} /></section>
 }
 
 function ReviewPage({ reviewState, onOpen, onRun }) {
@@ -1149,7 +1202,7 @@ function WorkflowProgress({ workflow, onRetry, onRerun, busy }) {
   return <section className="workflow-progress-panel">
     <div className="workflow-progress-head"><div><span className="eyebrow">WORKFLOW ORCHESTRATOR</span><strong>{workflow.status === 'completed' ? 'Workflow 已完成' : workflow.status === 'failed' ? 'Workflow 失败' : 'Workflow 执行中'}</strong><small>{workflow.current_node ? `当前节点：${labels[workflow.current_node] || workflow.current_node}` : '已保存每个节点的检查点'}</small></div><div className="workflow-progress-number">{workflow.progress}%</div></div>
     <div className="workflow-progress-track"><span style={{ width: `${workflow.progress}%` }} /></div>
-    <div className="workflow-node-list">{(workflow.nodes || []).map((node) => <div className={`workflow-node workflow-node-${node.status}`} key={node.node_id}><div className="workflow-node-main"><span className="workflow-node-dot" /><strong>{node.node_name}</strong><span>{labels[node.node_name] || node.node_name}</span></div><StatusTag tone={node.status === 'completed' || node.status === 'skipped' ? 'green' : node.status === 'failed' ? 'review' : 'neutral'}>{node.status}</StatusTag>{node.status === 'failed' && <button className="link-button" onClick={() => onRerun(node.node_name)} disabled={busy}>重跑节点</button>}</div>)}</div>
+    <div className="workflow-node-list">{(workflow.nodes || []).map((node) => <div className={`workflow-node workflow-node-${node.status}`} key={node.node_id}><div className="workflow-node-main"><span className="workflow-node-dot" /><strong>{node.node_name}</strong><span>{labels[node.node_name] || node.node_name}</span></div><StatusTag tone={node.status === 'completed' || node.status === 'skipped' ? 'green' : node.status === 'failed' || node.status === 'blocked' ? 'review' : 'neutral'}>{node.status}</StatusTag>{node.status === 'failed' && <button className="link-button" onClick={() => onRerun(node.node_name)} disabled={busy}>重跑节点</button>}</div>)}</div>
     {workflow.status === 'failed' && <div className="workflow-failure"><AlertCircle size={14} />{workflow.error_state?.message || '节点执行失败'}<button className="review-small-button" onClick={onRetry} disabled={busy}>重试 Workflow</button></div>}
   </section>
 }
@@ -1158,10 +1211,12 @@ function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
   const applicability = pipelineResult?.stages?.S2?.output
   const requirements = pipelineResult?.stages?.S3?.output
   const s4 = pipelineResult?.stages?.S4?.output
+  const s5 = pipelineResult?.stages?.S5?.output
   const locator = applicability?.regulation_locator
   const versionRelation = applicability?.version_relation
   const applicabilityLabel = { DIRECTLY_APPLICABLE: '直接适用', POTENTIALLY_APPLICABLE: '潜在适用', NOT_APPLICABLE: '不适用', NEEDS_REVIEW: '待确认' }[applicability?.status] || '待运行'
   const applicabilityTone = applicability?.status === 'DIRECTLY_APPLICABLE' ? 'green' : applicability?.status === 'NOT_APPLICABLE' ? 'neutral' : 'review'
+  const s5Label = s5?.comparison_status === 'COMPLETED' ? '已完成比较' : s5?.comparison_status === 'WAITING_RELATION_CONFIRMATION' ? '版本关系待确认' : s5?.comparison_status === 'WAITING_SOURCE_VERIFICATION' ? '来源待核验' : s5 ? '待补充旧规' : '待运行'
   return (
     <>
       <section>
@@ -1185,7 +1240,7 @@ function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
           <div className="data-cell">主体适用性</div><div className="data-cell"><StatusTag tone={applicabilityTone}>{applicabilityLabel}</StatusTag></div><div className="data-cell">{applicability?.reason || '基于当前文件正文初步判断；涉及附件和具体机构边界时需人工确认。'}</div>
           <div className="data-cell">地域适用性</div><div className="data-cell"><StatusTag tone={applicability?.matching_stage?.regional_temporal_match ? 'green' : 'review'}>{applicability?.matching_stage?.regional_temporal_match ? '初步适用' : '待确认'}</StatusTag></div><div className="data-cell">{applicability ? `当前任务地域：${applicability.region || '未指定'}。` : '当前文件明确面向中华人民共和国境内依法设立的金融企业。'}</div>
           <div className="data-cell">依据定位</div><div className="data-cell"><StatusTag tone={applicability?.applicability_evidence?.some((item) => item.status !== 'not_found') ? 'green' : 'review'}>{applicability?.applicability_evidence?.length ? `${applicability.applicability_evidence.length} 条定位` : '待运行'}</StatusTag></div><div className="data-cell">{applicability?.applicability_evidence?.[0]?.source_text || applicability?.applicability_evidence?.[0]?.reason || '适用性结论必须回溯法规原文定位。'}</div>
-          <div className="data-cell">版本比较</div><div className="data-cell"><StatusTag tone="review">待补充原文</StatusTag></div><div className="data-cell">用户未提供可核验的 2015 年版，本任务暂不生成 S5 差异结论。</div>
+          <div className="data-cell">版本比较</div><div className="data-cell"><StatusTag tone={s5?.comparison_status === 'COMPLETED' ? 'green' : 'review'}>{s5Label}</StatusTag></div><div className="data-cell">{s5?.reason || '补充旧规原文并完成版本关系核验后，才生成条款级差异结论。'}</div>
           <div className="data-cell">版本关系</div><div className="data-cell"><StatusTag tone={versionRelation?.status === 'IDENTIFIED' ? 'green' : 'review'}>{versionRelation?.status === 'IDENTIFIED' ? '已登记前版' : versionRelation ? '候选关系待核验' : '待运行'}</StatusTag></div><div className="data-cell">{versionRelation?.reason || '当前尚未识别版本关系。'}</div>
         </div>
       </section>
@@ -1197,7 +1252,7 @@ function Overview({ onEvidence, pipelineResult, onRun, pipelineBusy }) {
           <div className="status-card"><span>适用性 · S2</span><strong>{applicabilityLabel}</strong><StatusTag tone={applicabilityTone}>{applicability?.confidence || '等待判断'}</StatusTag></div>
           <div className="status-card"><span>规则抽取 · S3</span><strong>{requirements ? `${requirements.requirement_count} 条` : '待解析'}</strong><StatusTag tone={requirements ? 'green' : 'review'}>{requirements ? '已结构化' : '下一节点'}</StatusTag></div>
           <div className="status-card"><span>条款解读 · S4</span><strong>{s4 ? `${s4.article_interpretation_count} 条` : '待生成'}</strong><StatusTag tone={s4 ? 'review' : 'neutral'}>{s4 ? '待人工复核' : '未运行'}</StatusTag></div>
-          <div className="status-card"><span>版本比较</span><strong>待补充原文</strong><StatusTag tone="review">不生成差异结论</StatusTag></div>
+          <div className="status-card"><span>版本比较</span><strong>{s5Label}</strong><StatusTag tone={s5?.comparison_status === 'COMPLETED' ? 'green' : 'review'}>{s5?.summary?.changed_article_count ? `${s5.summary.changed_article_count} 条变化` : '待核验'}</StatusTag></div>
           <div className="status-card"><span>流水线操作</span><strong>{pipelineResult ? '可复核' : '未运行'}</strong><button className="link-button" onClick={onRun} disabled={pipelineBusy}>{pipelineBusy ? '运行中…' : '运行 S1—S4'} <ArrowRight size={15} /></button></div>
         </div>
       </section>
@@ -1266,7 +1321,7 @@ function ClauseInterpretation({ onEvidence, pipelineResult }) {
   )
 }
 
-function CompareView({ onEvidence, pipelineResult, taskId, session, onCompared, notify }) {
+function CompareView({ onEvidence, pipelineResult, taskId, session, onAddPrevious, onCompared, notify }) {
   const [compareBusy, setCompareBusy] = useState(false)
   const [compareError, setCompareError] = useState('')
   const stage = pipelineResult?.stages?.S5
@@ -1343,6 +1398,7 @@ function CompareView({ onEvidence, pipelineResult, taskId, session, onCompared, 
             <span><AlertCircle size={13} /> 变化结论未生成</span>
           </div>
           {comparison?.comparison_status === 'WAITING_RELATION_CONFIRMATION' && <button className="section-action" onClick={confirmAndCompare} disabled={compareBusy}>{compareBusy ? '正在比较…' : '确认版本关系并比较'}</button>}
+          {(!comparison || comparison?.comparison_status === 'SKIPPED_NO_PREVIOUS_SOURCE') && <button className="section-action" onClick={onAddPrevious}>补充旧规原文</button>}
           {compareError && <div className="pipeline-error"><AlertCircle size={15} />{compareError}</div>}
           <button className="link-button" onClick={() => onEvidence('E-01')}>查看当前来源边界 <ExternalLink size={13} /></button>
         </div>}

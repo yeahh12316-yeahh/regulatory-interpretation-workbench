@@ -829,7 +829,7 @@ def run_s1_s4_pipeline(
     task.step_status = {"S1": s1, "S2": s2, "S3": s3, "S4": s4, "pipeline_run_id": run_id, "S5": s5}
     if progress_callback:
         progress_callback("S4", "completed", s4["output"])
-        progress_callback("S5", "completed" if s5["status"] == "completed" else "skipped", s5["output"])
+        progress_callback("S5", "completed" if s5["status"] == "completed" else ("skipped" if s5["status"] == "skipped" else "blocked"), s5["output"])
     task.current_step = "S4"
     task.task_status = "waiting_review"
     task.last_checkpoint = {"pipeline_run_id": run_id, "completed_at": _now(), "next_action": "人工复核"}

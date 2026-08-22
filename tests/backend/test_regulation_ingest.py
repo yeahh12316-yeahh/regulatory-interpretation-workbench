@@ -7,13 +7,14 @@ import httpx
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfgen import canvas
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from backend.app.core.config import get_settings
 from backend.app.db import model_registry  # noqa: F401
 from backend.app.db.base import Base
+from backend.app.db.models import RegulationVersion, SourceDocument
 from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.ocr_fallback import OCRUnavailableError
@@ -127,6 +128,173 @@ def test_pdf_upload_registers_version_articles_and_source_locations(tmp_path, mo
         assert articles.status_code == 200
         assert len(articles.json()) == 2
         assert articles.json()[-1]["article_no"] == "第二条"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_import_previous_version_keeps_current_version_and_links_relation(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        registration = asyncio.run(
+            request(
+                "POST",
+                "/api/auth/register",
+                json={
+                    "email": "version-owner@example.com",
+                    "password": "correct-horse-battery-staple",
+                    "display_name": "Version Owner",
+                    "organization_name": "版本比较测试机构",
+                    "organization_slug": "version-compare-test",
+                },
+            )
+        )
+        headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+        current = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("current.pdf", build_fixture_pdf(), "application/pdf")},
+                data={"version_label": "2026年版", "upload_id": "current-upload"},
+            )
+        )
+        assert current.status_code == 201, current.text
+        current_payload = current.json()
+
+        previous = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("previous.pdf", build_fixture_pdf(), "application/pdf")},
+                data={
+                    "task_id": current_payload["task_id"],
+                    "regulation_id": current_payload["regulation"]["regulation_id"],
+                    "version_label": "2025年版",
+                    "version_role": "previous",
+                    "upload_id": "previous-upload",
+                },
+            )
+        )
+        assert previous.status_code == 201, previous.text
+        previous_payload = previous.json()
+        assert previous_payload["version"]["is_current"] is False
+
+        with Session(engine) as db:
+            versions = list(
+                db.scalars(
+                    select(RegulationVersion)
+                    .where(RegulationVersion.regulation_id == current_payload["regulation"]["regulation_id"])
+                    .order_by(RegulationVersion.created_at)
+                )
+            )
+            assert len(versions) == 2
+            assert versions[-1].version_id == current_payload["version"]["version_id"]
+            assert versions[-1].is_current is True
+            assert versions[-1].previous_version_id == previous_payload["version"]["version_id"]
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_parse_pdf_uses_heading_before_later_appendix_title(tmp_path):
+    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+    stream = BytesIO()
+    document = canvas.Canvas(stream, pagesize=(420, 594))
+    document.setFont("STSong-Light", 11)
+    lines = [
+        "金融企业呆账核销管理办法",
+        "（2015 年修订版）",
+        "（财金〔2015〕60 号）",
+        "第一章 总则",
+        "第一条 为规范金融企业呆账核销管理，制定本办法。",
+        "附 1：《一般债权或股权呆账认定标准及核销所需相关材料》",
+    ]
+    y = 550
+    for line in lines:
+        document.drawString(24, y, line)
+        y -= 20
+    document.save()
+    path = tmp_path / "heading-before-appendix.pdf"
+    path.write_bytes(stream.getvalue())
+
+    parsed = parse_pdf(path, enable_ocr=False)
+
+    assert parsed.title == "金融企业呆账核销管理办法"
+    assert parsed.document_no == "财金〔2015〕60号"
+
+
+def test_repeated_upload_id_reuses_persisted_import(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        registration = asyncio.run(
+            request(
+                "POST",
+                "/api/auth/register",
+                json={
+                    "email": "idempotency-owner@example.com",
+                    "password": "correct-horse-battery-staple",
+                    "display_name": "Idempotency Owner",
+                    "organization_name": "上传幂等测试机构",
+                    "organization_slug": "idempotency-test",
+                },
+            )
+        )
+        headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+        body = build_fixture_pdf()
+        first = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("same.pdf", body, "application/pdf")},
+                data={"version_label": "2026年版", "upload_id": "stable-upload-id"},
+            )
+        )
+        second = asyncio.run(
+            request(
+                "POST",
+                "/api/regulations/import",
+                headers=headers,
+                files={"file": ("same.pdf", body, "application/pdf")},
+                data={"version_label": "2026年版", "upload_id": "stable-upload-id"},
+            )
+        )
+        assert first.status_code == 201, first.text
+        assert second.status_code == 201, second.text
+        assert second.json()["task_id"] == first.json()["task_id"]
+        assert second.json()["source_document"]["document_id"] == first.json()["source_document"]["document_id"]
+        with Session(engine) as db:
+            assert len(list(db.scalars(select(SourceDocument)))) == 1
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()

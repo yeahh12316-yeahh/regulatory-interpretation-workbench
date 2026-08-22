@@ -212,7 +212,8 @@ def execute_workflow(db: Session, workflow_id: str) -> WorkflowRun:
             if node.status not in {"completed", "skipped"}:
                 stage = (task.step_status or {}).get(node_name) or {}
                 output = stage.get("output") or {}
-                status = "skipped" if stage.get("status") == "skipped" else "completed"
+                stage_status = stage.get("status")
+                status = "skipped" if stage_status == "skipped" else ("blocked" if stage_status in {"blocked", "waiting"} else "completed")
                 _update_node(db, workflow, task, node_name, status, output=output)
         workflow.status = "completed"
         workflow.current_node = None

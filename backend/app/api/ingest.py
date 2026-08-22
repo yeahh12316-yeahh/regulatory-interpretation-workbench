@@ -64,6 +64,7 @@ def _complete_import(
     parsed: ParsedRegulation,
     regulation_id: str | None,
     version_label: str | None,
+    version_role: str,
 ) -> RegulationImportRead:
     task = db.get(Task, document.task_id) if document.task_id else None
     if task is None:
@@ -109,10 +110,18 @@ def _complete_import(
         .where(RegulationVersion.regulation_id == regulation.regulation_id, RegulationVersion.is_current.is_(True))
         .order_by(RegulationVersion.created_at.desc())
     )
+    if version_role not in {"current", "previous"}:
+        raise HTTPException(status_code=422, detail="version_role 只能为 current 或 previous")
+    if version_role == "previous" and current_version is None:
+        raise HTTPException(status_code=409, detail="补充旧规版本前，当前法规必须已有一个已登记版本")
+
     previous_version_id: str | None = None
-    if current_version is not None:
+    is_current = version_role == "current"
+    if current_version is not None and version_role == "current":
         previous_version_id = current_version.version_id
         current_version.is_current = False
+    elif current_version is not None and version_role == "previous":
+        previous_version_id = current_version.previous_version_id
 
     document.page_count = parsed.page_count
     document.document_metadata = {
@@ -129,10 +138,12 @@ def _complete_import(
         source_document=document,
         previous_version_id=previous_version_id,
         source_sha256=document.sha256,
-        is_current=True,
+        is_current=is_current,
     )
     db.add(version)
     db.flush()
+    if current_version is not None and version_role == "previous":
+        current_version.previous_version_id = version.version_id
 
     articles: list[Article] = []
     for parsed_article in parsed.articles:
@@ -160,6 +171,7 @@ def _complete_import(
         "document_id": document.document_id,
         "article_count": len(articles),
         "page_count": parsed.page_count,
+        "version_role": version_role,
     }
     task.step_status = {
         **task.step_status,
@@ -178,6 +190,27 @@ def _complete_import(
         article_count=len(articles),
         page_count=parsed.page_count,
         warnings=parsed.warnings,
+        sample_articles=[ArticleRead.model_validate(article) for article in articles[:3]],
+    )
+
+
+def _import_read_for_document(db: Session, document: SourceDocument) -> RegulationImportRead:
+    task = db.get(Task, document.task_id) if document.task_id else None
+    version = db.scalar(select(RegulationVersion).where(RegulationVersion.source_document_id == document.document_id))
+    if task is None or version is None:
+        raise HTTPException(status_code=404, detail="source document import record not found")
+    regulation = db.get(Regulation, version.regulation_id)
+    if regulation is None:
+        raise HTTPException(status_code=404, detail="regulation import record not found")
+    articles = list(db.scalars(select(Article).where(Article.version_id == version.version_id).order_by(Article.article_order)))
+    return RegulationImportRead(
+        task_id=task.task_id,
+        source_document=document,
+        regulation=regulation,
+        version=version,
+        article_count=len(articles),
+        page_count=document.page_count or 0,
+        warnings=list(document.document_metadata.get("warnings") or []),
         sample_articles=[ArticleRead.model_validate(article) for article in articles[:3]],
     )
 
@@ -215,6 +248,7 @@ async def _parse_uploaded_document(
     path: Path,
     regulation_id: str | None,
     version_label: str | None,
+    version_role: str,
     attempt: int,
 ) -> RegulationImportRead:
     settings = get_settings()
@@ -256,6 +290,7 @@ async def _parse_uploaded_document(
         parsed=parsed,
         regulation_id=regulation_id,
         version_label=version_label,
+        version_role=version_role,
     )
 
 
@@ -265,6 +300,8 @@ async def import_regulation(
     task_id: str | None = Form(default=None),
     regulation_id: str | None = Form(default=None),
     version_label: str | None = Form(default=None),
+    version_role: str = Form(default="current"),
+    upload_id: str | None = Form(default=None),
     source_url: str | None = Form(default=None),
     context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
     db: Session = Depends(get_db),
@@ -275,6 +312,48 @@ async def import_regulation(
         raise HTTPException(status_code=422, detail="上传文件为空")
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="单个 PDF 不能超过 25 MB")
+
+    if version_role not in {"current", "previous"}:
+        raise HTTPException(status_code=422, detail="version_role 只能为 current 或 previous")
+
+    if upload_id:
+        existing_document = next(
+            (
+                candidate
+                for candidate in db.scalars(
+                    select(SourceDocument).join(Task, Task.task_id == SourceDocument.task_id).where(
+                        Task.organization_id == context.organization.organization_id
+                    )
+                )
+                if candidate.document_metadata.get("upload_id") == upload_id
+            ),
+            None,
+        )
+        if existing_document is not None:
+            parse_status = existing_document.document_metadata.get("parse_status")
+            if parse_status == "parsed":
+                return _import_read_for_document(db, existing_document)
+            path = _document_path(existing_document)
+            existing_task = db.get(Task, existing_document.task_id)
+            if existing_task is None:
+                raise HTTPException(status_code=404, detail="source document task not found")
+            attempts = int(existing_document.document_metadata.get("parse_attempts", 0)) + 1
+            existing_document.document_metadata = {
+                **existing_document.document_metadata,
+                "parse_status": "retrying",
+                "parse_attempts": attempts,
+            }
+            existing_task.task_status = "uploading"
+            db.commit()
+            return await _parse_uploaded_document(
+                db=db,
+                document_id=existing_document.document_id,
+                path=path,
+                regulation_id=existing_document.document_metadata.get("requested_regulation_id"),
+                version_label=existing_document.document_metadata.get("requested_version_label"),
+                version_role=existing_document.document_metadata.get("version_role", "current"),
+                attempt=attempts,
+            )
 
     if task_id is not None:
         task = db.get(Task, task_id)
@@ -318,6 +397,8 @@ async def import_regulation(
             "parse_attempts": 0,
             "requested_regulation_id": regulation_id,
             "requested_version_label": version_label,
+            "version_role": version_role,
+            "upload_id": upload_id,
         },
     )
     db.add(document)
@@ -332,6 +413,7 @@ async def import_regulation(
         path=storage_path,
         regulation_id=regulation_id,
         version_label=version_label,
+        version_role=version_role,
         attempt=1,
     )
 
@@ -366,6 +448,7 @@ async def retry_parse(
         path=path,
         regulation_id=document.document_metadata.get("requested_regulation_id"),
         version_label=document.document_metadata.get("requested_version_label"),
+        version_role=document.document_metadata.get("version_role", "current"),
         attempt=attempts,
     )
 

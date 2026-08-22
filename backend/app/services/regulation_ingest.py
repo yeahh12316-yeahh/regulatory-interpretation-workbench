@@ -125,10 +125,26 @@ def parse_pdf(
             ocr_error = str(exc)
             warnings.append(ocr_error)
     full_text = "\n".join(normalize_text(page) for page in pages)
-    title_match = re.search(r"《([^》]{2,200})》", full_text)
-    title = title_match.group(1).strip() if title_match else Path(path).stem
     first_article_position = re.search(r"第[〇零一二三四五六七八九十百千万两0-9]+条", full_text)
     header_text = full_text[: first_article_position.start()] if first_article_position else full_text[:3000]
+    title_match = re.search(r"《([^》]{2,200})》", header_text)
+    if title_match:
+        title = title_match.group(1).strip()
+    else:
+        header_lines = _clean_page_lines(header_text)
+        title = next(
+            (
+                line
+                for _, line in header_lines
+                if not DOCUMENT_NO_PATTERN.fullmatch(line.replace(" ", ""))
+                and not CHAPTER_PATTERN.match(line)
+                and not DATE_PATTERN.search(line)
+                and "修订版" not in line
+                and "版）" not in line
+                and "版)" not in line
+            ),
+            Path(path).stem,
+        )
     document_no_match = DOCUMENT_NO_PATTERN.search(header_text)
     document_no = document_no_match.group(1).replace(" ", "") if document_no_match else None
     version_match = VERSION_PATTERN.search(title) or VERSION_PATTERN.search(full_text)
