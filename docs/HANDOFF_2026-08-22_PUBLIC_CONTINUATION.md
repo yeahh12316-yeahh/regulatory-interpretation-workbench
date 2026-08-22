@@ -232,7 +232,8 @@ CASE-001 是 2017 年金融企业呆账核销管理办法任务，当前真实�
 - GitHub Pages 浏览器层已完成“选择 PDF → 上传并登记 → 显示 4 页/25 条款/哈希 → 运行 S1—S4 → Workflow 100% → 显示 56 条要求/25 条解读”的验证。
 - 发现网页刷新后任务列表仍为静态数据的问题，已新增 API 任务列表、当前任务 ID 持久化和刷新后的 Workflow/解读恢复逻辑；对应测试为 `tests/frontend/task_persistence.test.mjs`。
 - 修复后的本地验证为：前端持久化测试 2 passed、后端 39 passed、Benchmark 6 cases / 20 assertions / 0 asset errors、前端生产构建通过。
-- 第 1 步的公网 API、公开网页上传、解析、S1—S4 和刷新恢复已经具备验收证据；发布修复后的 Pages 版本后，才正式关闭第 1 步。
+- GitHub Actions CI 已通过：提交 `8c40ccd` 的 backend-worker、frontend、compose-smoke 全部成功；Pages 已发布新构建 `assets/index-DZ7LCuZf.js`。
+- 发布后的公网页面已强制刷新验收：真实任务列表恢复为 1 个任务，Workflow 恢复为 100%，S1—S4 为 completed，S5 为 skipped，56 条要求、25 条逐条解读和“待人工复核”均恢复。第 1 步正式关闭。
 
 新会话不要重复实现第 1—19 项，也不要先做页面重设计。建议顺序如下：
 
@@ -328,7 +329,7 @@ CASE-001 是 2017 年金融企业呆账核销管理办法任务，当前真实�
 > 当前公网地址：
 > 前端 `https://yeahh12316-yeahh.github.io/regulatory-interpretation-workbench/`
 > 后端 `https://regulatory-interpretation-api.onrender.com`
-> 最新公开提交 `d580044`，GitHub Pages Run #23 已成功。
+> 最新公开提交 `8c40ccd`，GitHub Pages 已成功发布，CI 与 Compose smoke 均通过。
 >
 > 现在不要重复第1—19项工程实现。先处理“公网上传出现 Load failed”的验证：先确认公开构建的 API 地址、CORS、Render `/health`、`/ready` 和 `/api/auth/guest`；让用户强制刷新后重试。如果需要把用户真实 PDF 上传到公网测试，必须先取得用户明确同意。然后按“CASE-001人工验收 → Content Package锁定 → LLM Reviewer → Workflow公开验证 → 端到端与部署硬化 → 正式人工发布验收”的顺序继续。
 
