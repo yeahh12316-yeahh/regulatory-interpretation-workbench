@@ -5,17 +5,17 @@ import re
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.api.schemas import ArticleRead, RegulationImportRead
+from backend.app.api.schemas import ArticleRead, ParsePendingRead, ParseStatusRead, RegulationImportRead
 from backend.app.core.config import get_settings
 from backend.app.db.models import Article, Regulation, RegulationVersion, SourceDocument, Task
-from backend.app.db.session import get_db
+from backend.app.db.session import SessionLocal, get_db
 from backend.app.security import AuthContext, require_roles
-from backend.app.services.regulation_ingest import ParsedRegulation, parse_pdf
+from backend.app.services.regulation_ingest import ParsedRegulation, parse_pdf, pdf_requires_ocr
 
 
 router = APIRouter(prefix="/api", tags=["regulation-ingest"])
@@ -241,7 +241,7 @@ def _mark_parse_failed(db: Session, document_id: str, error: str, *, attempt: in
     db.commit()
 
 
-async def _parse_uploaded_document(
+def _parse_uploaded_document(
     *,
     db: Session,
     document_id: str,
@@ -294,7 +294,32 @@ async def _parse_uploaded_document(
     )
 
 
-@router.post("/regulations/import", response_model=RegulationImportRead, status_code=status.HTTP_201_CREATED)
+def _parse_document_background(**kwargs: object) -> None:
+    document_id = str(kwargs["document_id"])
+    attempt = int(kwargs["attempt"])
+    with SessionLocal() as db:
+        try:
+            _parse_uploaded_document(db=db, **kwargs)
+        except Exception:
+            # _parse_uploaded_document records the detailed retryable state;
+            # the background task must not crash the web worker or emit a
+            # second response after the upload has already been acknowledged.
+            document = db.get(SourceDocument, document_id)
+            if document is not None and document.document_metadata.get("parse_status") not in {"failed", "parsed"}:
+                _mark_parse_failed(db, document_id, "后台 PDF 解析失败，请点击重试", attempt=attempt)
+
+
+def _pending_read(document: SourceDocument) -> ParsePendingRead:
+    return ParsePendingRead(
+        status="processing",
+        document_id=document.document_id,
+        task_id=document.task_id,
+        status_url=f"/api/source-documents/{document.document_id}/parse-status",
+        message="文件已安全保存，扫描页正在后台 OCR 解析；页面会自动等待结果。",
+    )
+
+
+@router.post("/regulations/import", response_model=RegulationImportRead | ParsePendingRead, status_code=status.HTTP_201_CREATED)
 async def import_regulation(
     file: UploadFile = File(...),
     task_id: str | None = Form(default=None),
@@ -303,6 +328,7 @@ async def import_regulation(
     version_role: str = Form(default="current"),
     upload_id: str | None = Form(default=None),
     source_url: str | None = Form(default=None),
+    background_tasks: BackgroundTasks = None,
     context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
     db: Session = Depends(get_db),
 ) -> RegulationImportRead:
@@ -345,15 +371,18 @@ async def import_regulation(
             }
             existing_task.task_status = "uploading"
             db.commit()
-            return await _parse_uploaded_document(
-                db=db,
-                document_id=existing_document.document_id,
-                path=path,
-                regulation_id=existing_document.document_metadata.get("requested_regulation_id"),
-                version_label=existing_document.document_metadata.get("requested_version_label"),
-                version_role=existing_document.document_metadata.get("version_role", "current"),
-                attempt=attempts,
-            )
+            kwargs = {
+                "document_id": existing_document.document_id,
+                "path": path,
+                "regulation_id": existing_document.document_metadata.get("requested_regulation_id"),
+                "version_label": existing_document.document_metadata.get("requested_version_label"),
+                "version_role": existing_document.document_metadata.get("version_role", "current"),
+                "attempt": attempts,
+            }
+            if pdf_requires_ocr(path) and db.bind.dialect.name != "sqlite":
+                background_tasks.add_task(_parse_document_background, **kwargs)
+                return _pending_read(existing_document)
+            return _parse_uploaded_document(db=db, **kwargs)
 
     if task_id is not None:
         task = db.get(Task, task_id)
@@ -407,20 +436,27 @@ async def import_regulation(
     task.last_checkpoint = {"stage": "upload_persisted", "document_id": document_id}
     db.commit()
 
-    return await _parse_uploaded_document(
-        db=db,
-        document_id=document_id,
-        path=storage_path,
-        regulation_id=regulation_id,
-        version_label=version_label,
-        version_role=version_role,
-        attempt=1,
-    )
+    kwargs = {
+        "document_id": document_id,
+        "path": storage_path,
+        "regulation_id": regulation_id,
+        "version_label": version_label,
+        "version_role": version_role,
+        "attempt": 1,
+    }
+    if pdf_requires_ocr(storage_path) and db.bind.dialect.name != "sqlite":
+        document.document_metadata = {**document.document_metadata, "parse_status": "processing"}
+        task.task_status = "processing"
+        db.commit()
+        background_tasks.add_task(_parse_document_background, **kwargs)
+        return _pending_read(document)
+    return _parse_uploaded_document(db=db, **kwargs)
 
 
-@router.post("/source-documents/{document_id}/retry-parse", response_model=RegulationImportRead, status_code=status.HTTP_201_CREATED)
+@router.post("/source-documents/{document_id}/retry-parse", response_model=RegulationImportRead | ParsePendingRead, status_code=status.HTTP_201_CREATED)
 async def retry_parse(
     document_id: str,
+    background_tasks: BackgroundTasks,
     context: AuthContext = Depends(require_roles("owner", "admin", "editor")),
     db: Session = Depends(get_db),
 ) -> RegulationImportRead:
@@ -442,14 +478,42 @@ async def retry_parse(
     }
     task.task_status = "uploading"
     db.commit()
-    return await _parse_uploaded_document(
-        db=db,
-        document_id=document_id,
-        path=path,
-        regulation_id=document.document_metadata.get("requested_regulation_id"),
-        version_label=document.document_metadata.get("requested_version_label"),
-        version_role=document.document_metadata.get("version_role", "current"),
-        attempt=attempts,
+    kwargs = {
+        "document_id": document_id,
+        "path": path,
+        "regulation_id": document.document_metadata.get("requested_regulation_id"),
+        "version_label": document.document_metadata.get("requested_version_label"),
+        "version_role": document.document_metadata.get("version_role", "current"),
+        "attempt": attempts,
+    }
+    if pdf_requires_ocr(path) and db.bind.dialect.name != "sqlite":
+        document.document_metadata = {**document.document_metadata, "parse_status": "processing"}
+        db.commit()
+        background_tasks.add_task(_parse_document_background, **kwargs)
+        return _pending_read(document)
+    return _parse_uploaded_document(db=db, **kwargs)
+
+
+@router.get("/source-documents/{document_id}/parse-status", response_model=ParseStatusRead)
+def parse_status(
+    document_id: str,
+    context: AuthContext = Depends(require_roles("owner", "admin", "editor", "reviewer", "viewer")),
+    db: Session = Depends(get_db),
+) -> ParseStatusRead:
+    document = db.get(SourceDocument, document_id)
+    task = db.get(Task, document.task_id) if document and document.task_id else None
+    if document is None or task is None or task.organization_id != context.organization.organization_id:
+        raise HTTPException(status_code=404, detail="source document not found")
+    metadata = document.document_metadata or {}
+    parse_state = metadata.get("parse_status") or "uploaded"
+    result = _import_read_for_document(db, document) if parse_state == "parsed" else None
+    return ParseStatusRead(
+        status=parse_state,
+        document_id=document.document_id,
+        task_id=document.task_id,
+        message=metadata.get("parser_error") if parse_state == "failed" else None,
+        retryable=bool(metadata.get("retryable")),
+        result=result,
     )
 
 

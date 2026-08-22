@@ -93,6 +93,15 @@ def _is_scan_placeholder(page_text: str) -> bool:
     )
 
 
+def pdf_requires_ocr(path: str | Path) -> bool:
+    """Detect scan pages quickly so OCR can run outside the upload request."""
+    reader = PdfReader(str(path))
+    return any(
+        not (page.extract_text() or "").strip() or _is_scan_placeholder(page.extract_text() or "")
+        for page in reader.pages
+    )
+
+
 def parse_pdf(
     path: str | Path,
     *,

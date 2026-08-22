@@ -161,6 +161,23 @@ class RegulationImportRead(BaseModel):
     sample_articles: list[ArticleRead]
 
 
+class ParsePendingRead(BaseModel):
+    status: str
+    document_id: str
+    task_id: str | None = None
+    status_url: str
+    message: str
+
+
+class ParseStatusRead(BaseModel):
+    status: str
+    document_id: str
+    task_id: str | None = None
+    message: str | None = None
+    retryable: bool = False
+    result: RegulationImportRead | None = None
+
+
 class PipelineRunRequest(BaseModel):
     institution_type: str = Field(default="商业银行", min_length=1, max_length=128)
     business_scope: list[str] = Field(default_factory=list)

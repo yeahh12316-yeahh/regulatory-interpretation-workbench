@@ -299,6 +299,24 @@ function RegulationImportModal({ session, onClose, onImported, taskId = null, re
   const [failedUpload, setFailedUpload] = useState(null)
   const [uploadId] = useState(() => window.crypto?.randomUUID?.() || `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`)
 
+  async function waitForParse(pending) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const current = await apiClient.regulationParseStatus(pending.document_id, session.accessToken)
+      if (current.status === 'parsed' && current.result) return current.result
+      if (current.status === 'failed') {
+        const failure = new Error(current.message || '后台 PDF 解析失败，请重试')
+        failure.retryable = current.retryable
+        failure.documentId = pending.document_id
+        throw failure
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 3000))
+    }
+    const timeout = new Error('PDF 正在后台解析，页面等待超时；请稍后点击重新解析')
+    timeout.retryable = true
+    timeout.documentId = pending.document_id
+    throw timeout
+  }
+
   async function submit(event) {
     event.preventDefault()
     setError('')
@@ -313,7 +331,8 @@ function RegulationImportModal({ session, onClose, onImported, taskId = null, re
     }
     setBusy(true)
     try {
-      const nextResult = await apiClient.importRegulation(file, { taskId, regulationId, versionLabel, versionRole, sourceUrl, uploadId }, session.accessToken)
+      const pendingOrResult = await apiClient.importRegulation(file, { taskId, regulationId, versionLabel, versionRole, sourceUrl, uploadId }, session.accessToken)
+      const nextResult = pendingOrResult.status === 'processing' ? await waitForParse(pendingOrResult) : pendingOrResult
       setResult(nextResult)
       onImported(nextResult)
     } catch (requestError) {
@@ -331,7 +350,8 @@ function RegulationImportModal({ session, onClose, onImported, taskId = null, re
     setBusy(true)
     setError('')
     try {
-      const nextResult = await apiClient.retryRegulationParse(failedUpload.documentId, session.accessToken)
+      const pendingOrResult = await apiClient.retryRegulationParse(failedUpload.documentId, session.accessToken)
+      const nextResult = pendingOrResult.status === 'processing' ? await waitForParse(pendingOrResult) : pendingOrResult
       setFailedUpload(null)
       setResult(nextResult)
       onImported(nextResult)

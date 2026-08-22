@@ -87,6 +87,7 @@ export const apiClient = {
   tasks: (token) => request('/tasks', {}, token),
   task: (taskId, token) => request(`/tasks/${taskId}`, {}, token),
   retryRegulationParse: (documentId, token) => request(`/source-documents/${documentId}/retry-parse`, { method: 'POST' }, token),
+  regulationParseStatus: (documentId, token) => request(`/source-documents/${documentId}/parse-status`, {}, token),
   articles: (regulationId, versionId, token) => request(`/regulations/${regulationId}/versions/${versionId}/articles`, {}, token),
   article: (articleId, token) => request(`/articles/${articleId}`, {}, token),
   runInterpretation: (taskId, body, token) => request(`/tasks/${taskId}/interpret`, { method: 'POST', body: JSON.stringify(body) }, token),
