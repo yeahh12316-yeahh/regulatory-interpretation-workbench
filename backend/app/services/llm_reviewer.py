@@ -118,7 +118,7 @@ def run_llm_review(db: Session, task: Task, *, actor_id: str) -> dict[str, Any]:
     prompt = json.dumps(
         {
             "task_id": task.task_id,
-            "review_scope": "检查监管原文片段是否被准确引用、结构化数字是否一致、内容块是否有证据、解读是否存在超出原文的确定性表述。",
+            "review_scope": "检查监管原文片段是否被准确引用、结构化数字是否一致、内容块是否有证据、解读是否存在超出原文的确定性表述。注意：Requirement 是原子化拆解，Requirement.source_text 可以是 Evidence.source_text 的连续子串；同一条款的 Evidence 可以覆盖比单个 Requirement 更大的完整原文。只有在片段不属于对应证据、关键事实/数字不一致、证据缺失或解读超出原文时才报告问题，不要仅因证据文本更长或拆解粒度不同而报告 SOURCE_TEXT_MISMATCH。",
             "data": _review_payload(objects),
             "output_schema": {
                 "overall_status": "pass | needs_revision | fail",
