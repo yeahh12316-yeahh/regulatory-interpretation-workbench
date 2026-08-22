@@ -615,6 +615,25 @@ function App() {
     window.setTimeout(() => setToast(''), 2400)
   }
 
+  useEffect(() => {
+    function handleAuthExpired() {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY)
+      setSession(null)
+      setAccessPanelOpen(false)
+      setImportModalOpen(false)
+      notify('登录已过期，请重新登录后继续使用')
+    }
+
+    window.addEventListener('regulatory-workbench-auth-expired', handleAuthExpired)
+    return () => window.removeEventListener('regulatory-workbench-auth-expired', handleAuthExpired)
+  }, [])
+
+  useEffect(() => {
+    if (session?.mode !== 'api' || !session.accessToken) return undefined
+    apiClient.me(session.accessToken).catch(() => {})
+    return undefined
+  }, [session?.mode, session?.accessToken])
+
   function navigate(page) {
     setActivePage(page)
     if (page === 'interpretation') setActiveTab('概览')

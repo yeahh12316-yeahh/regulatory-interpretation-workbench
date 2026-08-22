@@ -9,6 +9,9 @@ async function request(path, options = {}, accessToken) {
   const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, { ...options, headers })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
+    if (response.status === 401 && accessToken) {
+      window.dispatchEvent(new CustomEvent('regulatory-workbench-auth-expired'))
+    }
     const detail = payload.detail
     const message = typeof detail === 'string' ? detail : detail?.message || `请求失败（${response.status}）`
     const error = new Error(message)
