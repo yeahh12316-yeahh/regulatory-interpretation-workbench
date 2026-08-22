@@ -111,6 +111,7 @@ def update_review_metadata(
         "publish_date": version.publish_date.isoformat() if version.publish_date else None,
         "effective_date": version.effective_date.isoformat() if version.effective_date else None,
         "attachment_resolution": ((task.processing_config or {}).get("review_overrides") or {}).get("attachment_resolution"),
+        "attachment_note": ((task.processing_config or {}).get("review_overrides") or {}).get("attachment_note"),
     }
     fields = payload.model_fields_set
     if "document_no" in fields:
@@ -130,6 +131,15 @@ def update_review_metadata(
             overrides.pop("attachment_resolution", None)
         else:
             overrides["attachment_resolution"] = payload.attachment_resolution
+        config["review_overrides"] = overrides
+        task.processing_config = config
+    if "attachment_note" in fields:
+        config = dict(task.processing_config or {})
+        overrides = dict(config.get("review_overrides") or {})
+        if payload.attachment_note is None:
+            overrides.pop("attachment_note", None)
+        else:
+            overrides["attachment_note"] = payload.attachment_note.strip()
         config["review_overrides"] = overrides
         task.processing_config = config
     step_status = dict(task.step_status or {})
@@ -186,6 +196,7 @@ def update_review_metadata(
         "publish_date": version.publish_date.isoformat() if version.publish_date else None,
         "effective_date": version.effective_date.isoformat() if version.effective_date else None,
         "attachment_resolution": ((task.processing_config or {}).get("review_overrides") or {}).get("attachment_resolution"),
+        "attachment_note": ((task.processing_config or {}).get("review_overrides") or {}).get("attachment_note"),
     }
     write_audit(db, task=task, actor_id=context.user.user_id, action="UPDATE_METADATA_REVIEW", entity_type="regulation_version", entity_id=version.version_id, before_state=before, after_state=after)
     db.commit()

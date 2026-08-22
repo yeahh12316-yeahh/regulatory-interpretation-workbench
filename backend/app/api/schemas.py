@@ -322,6 +322,7 @@ class MetadataReviewUpdate(BaseModel):
     publish_date: date | None = None
     effective_date: date | None = None
     attachment_resolution: str | None = Field(default=None, max_length=32)
+    attachment_note: str | None = Field(default=None, max_length=512)
 
 
 class EvidenceReviewUpdate(BaseModel):

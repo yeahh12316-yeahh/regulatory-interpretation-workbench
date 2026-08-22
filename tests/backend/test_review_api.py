@@ -364,6 +364,8 @@ def test_s1_metadata_has_field_provenance_and_manual_override_survives_rerun(tmp
                     "issuer": ["财政部"],
                     "publish_date": "2026-01-15",
                     "effective_date": "2026-03-01",
+                    "attachment_resolution": "needs_source",
+                    "attachment_note": "当前 PDF 未包含附1、附2、附3正文；附件相关结论保持待补充，不生成附件结论。",
                 },
             )
         )
@@ -373,6 +375,8 @@ def test_s1_metadata_has_field_provenance_and_manual_override_survives_rerun(tmp
         assert updated_s1["metadata_fields"]["document_no"]["value"] == "财金〔2026〕8号"
         assert updated_s1["manual_overrides"]["document_no"]["value"] == "财金〔2026〕8号"
         assert "document_no" not in updated_s1["unresolved_fields"]
+        assert updated.json()["task"]["processing_config"]["review_overrides"]["attachment_resolution"] == "needs_source"
+        assert updated.json()["task"]["processing_config"]["review_overrides"]["attachment_note"].startswith("当前 PDF 未包含附1")
 
         rerun = asyncio.run(request("POST", "/api/tasks/S1_METADATA_TASK/interpret", json=run_payload))
         assert rerun.status_code == 200, rerun.text
