@@ -1,13 +1,13 @@
 # 公网部署方案
 
-## 目标架构
+## 当前采用的免费架构
 
 - 前端：GitHub Pages，仓库 `yeahh12316-yeahh/regulatory-interpretation-workbench`。
-- 后端 API：Render Web Service。
-- 异步 Worker：Render Background Worker。
-- 数据库：Render PostgreSQL。
-- 队列：Render Key Value（Redis 兼容）。
-- 上传文件和报告：Render API 服务的持久化磁盘 `/data/regulatory-workbench`。
+- 后端 API：Render Free Web Service。
+- Workflow：API 内联执行，不部署独立 Worker。
+- 数据库：Render Free PostgreSQL。
+- 队列：Render Free Key Value（Redis 兼容，但不持久化）。
+- 上传文件和报告：临时文件系统，仅用于演示；重启或休眠后可能丢失。
 - HTTPS：GitHub Pages 和 Render 默认提供 HTTPS；自定义域名可在对应平台继续绑定。
 
 ## 为什么不能把 API Key 放进 GitHub
@@ -23,7 +23,17 @@ GitHub Pages 的构建产物和前端 JavaScript 对所有访问者可见。`VIT
 - `LLM_API_KEY`：新的 Nova API Key；
 - 若平台要求其他密钥，按 Render 的 Secret 提示填写。
 
-Render 服务正常后，API 默认地址为：
+Render 服务正常后，API 地址以 Dashboard 显示为准。
+
+免费版的重要限制：
+
+- Web Service 连续 15 分钟无请求会休眠，首次访问可能需要等待约 1 分钟；
+- Free PostgreSQL 只有 1GB，并在创建后 30 天到期；
+- Free Key Value 不持久化，重启后队列数据会丢失；
+- 免费 Web Service 无持久化磁盘；
+- 19 页扫描法规的 OCR 和长流程会占用 Web 请求时间，适合小规模验证，不适合作为稳定生产服务。
+
+Render 服务正常后，API 地址以 Dashboard 显示为准：
 
 ```text
 https://regulatory-interpretation-api.onrender.com
@@ -55,8 +65,10 @@ https://yeahh12316-yeahh.github.io/regulatory-interpretation-workbench/
 公网服务创建成功不等于正式发布完成。还需要实际验证：
 
 1. GitHub Pages 能从浏览器调用 Render API，CORS 不报错。
-2. 上传真实法规后，Worker 能完成 S1—S4 异步任务。
+2. 上传真实法规后，API 内联完成 S1—S4；免费版不部署独立 Worker。
 3. LLM Reviewer 使用新 Key 返回真实模型状态。
 4. PostgreSQL 备份和恢复演练完成。
 5. 26 个 Interpretation、56 个 Requirement 和 25 个 Evidence 完成人工复核和锁定。
 6. QC 通过并生成 `HUMAN_LOCKED` Content Package 后，才能正式发布报告。
+
+本免费配置是“可公开访问的验证版”，不是承诺数据长期保存的生产版。若后续需要稳定保存法规、报告、备份和异步 Worker，再切回付费 Render 配置或迁移到 Oracle Always Free VM。

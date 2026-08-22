@@ -1,19 +1,17 @@
-# Render Blueprint for the public backend.
-# Secrets are intentionally prompted during the first Blueprint creation.
+# Render Blueprint for the free public demo deployment.
+# Free-tier limitations: no separate Worker, no persistent disk, sleeping web
+# service, expiring Postgres, and non-persistent Key Value. Do not treat this
+# configuration as a production data-retention environment.
 services:
   - type: web
     name: regulatory-interpretation-api
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: checksPass
-    disk:
-      name: regulatory-data
-      mountPath: /data/regulatory-workbench
-      sizeGB: 10
     envVars:
       - key: APP_ENV
         value: production
@@ -22,7 +20,7 @@ services:
       - key: WEB_ORIGIN
         value: https://yeahh12316-yeahh.github.io
       - key: DATA_DIR
-        value: /data/regulatory-workbench
+        value: /tmp/regulatory-workbench
       - key: PRIVATE_MODE
         value: "false"
       - key: DATABASE_URL
@@ -51,9 +49,9 @@ services:
       - key: PROMETHEUS_ENABLED
         value: "true"
       - key: WORKFLOW_EXECUTION_MODE
-        value: celery
+        value: inline
       - key: WORKFLOW_ALLOW_INLINE_FALLBACK
-        value: "false"
+        value: "true"
       - key: ENABLE_S5
         value: "false"
       - key: ENABLE_OCR_FALLBACK
@@ -71,48 +69,17 @@ services:
       - key: LLM_API_KEY
         sync: false
 
-  - type: worker
-    name: regulatory-interpretation-worker
-    runtime: docker
-    plan: starter
-    region: singapore
-    dockerfilePath: ./worker/Dockerfile
-    dockerContext: .
-    autoDeployTrigger: checksPass
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: regulatory-interpretation-postgres
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: regulatory-interpretation-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: regulatory-interpretation-redis
-          type: keyvalue
-          property: connectionString
-      - key: DATA_DIR
-        value: /data/regulatory-workbench
-      - key: WORKFLOW_EXECUTION_MODE
-        value: celery
-
   - type: keyvalue
     name: regulatory-interpretation-redis
-    plan: starter
+    plan: free
     region: singapore
-    persistenceMode: journal-snapshot
+    persistenceMode: off
     ipAllowList:
       - source: 0.0.0.0/0
         description: Render private service connections
 
 databases:
   - name: regulatory-interpretation-postgres
-    plan: basic-256mb
+    plan: free
     region: singapore
     postgresMajorVersion: "16"
-    diskSizeGB: 15
