@@ -170,6 +170,53 @@ def test_qc_blocks_export_until_all_results_are_reviewed(tmp_path, monkeypatch):
         get_settings.cache_clear()
 
 
+def test_bulk_review_marks_all_reviewable_objects_and_writes_audit(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("PRIVATE_MODE", "true")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        task = asyncio.run(request("POST", "/api/tasks", json={"task_id": "BULK_REVIEW_TASK", "task_name": "批量复核测试任务"}))
+        assert task.status_code == 201, task.text
+        imported = asyncio.run(request(
+            "POST",
+            "/api/regulations/import",
+            files={"file": ("测试复核办法（2026年版）.pdf", build_review_fixture_pdf(), "application/pdf")},
+            data={"task_id": "BULK_REVIEW_TASK", "version_label": "2026年版"},
+        ))
+        assert imported.status_code == 201, imported.text
+        interpreted = asyncio.run(request(
+            "POST",
+            "/api/tasks/BULK_REVIEW_TASK/interpret",
+            json={"institution_type": "商业银行", "business_scope": ["复核"], "region": "中国境内"},
+        ))
+        assert interpreted.status_code == 200, interpreted.text
+
+        bulk = asyncio.run(request("POST", "/api/tasks/BULK_REVIEW_TASK/review/bulk"))
+
+        assert bulk.status_code == 200, bulk.text
+        payload = bulk.json()
+        assert payload["review_summary"]["reviewed_requirements"] == payload["review_summary"]["total_requirements"]
+        assert payload["review_summary"]["locked_interpretations"] == payload["review_summary"]["total_interpretations"]
+        assert payload["review_summary"]["verified_evidence"] == payload["review_summary"]["total_evidence"]
+        assert payload["audit_log_count"] >= payload["review_summary"]["total_requirements"] + payload["review_summary"]["total_interpretations"]
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
 def test_qc_pass_generates_a_downloadable_docx(tmp_path, monkeypatch):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)

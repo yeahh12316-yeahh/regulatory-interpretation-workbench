@@ -102,6 +102,7 @@ export const apiClient = {
   createContentPackage: (taskId, token) => request(`/tasks/${taskId}/content-package`, { method: 'POST' }, token),
   contentPackage: (taskId, token) => request(`/tasks/${taskId}/content-package`, {}, token),
   review: (taskId, token) => request(`/tasks/${taskId}/review`, {}, token),
+  bulkReview: (taskId, token) => request(`/tasks/${taskId}/review/bulk`, { method: 'POST' }, token),
   updateReviewMetadata: (taskId, body, token) => request(`/tasks/${taskId}/review/metadata`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   updateReviewRequirement: (taskId, requirementId, body, token) => request(`/tasks/${taskId}/review/requirements/${requirementId}`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   updateReviewInterpretation: (taskId, interpretationId, body, token) => request(`/tasks/${taskId}/review/interpretations/${interpretationId}`, { method: 'PATCH', body: JSON.stringify(body) }, token),

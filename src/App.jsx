@@ -38,7 +38,7 @@ import {
   X,
 } from 'lucide-react'
 import { apiClient } from './lib/api-client'
-import { runtimeConfig } from './lib/runtime-config'
+import { resolveApiUrl, runtimeConfig } from './lib/runtime-config'
 import { chooseCurrentTask, mapApiTaskToWorkbenchTask } from './lib/task-persistence'
 import { selectTaskState } from './lib/task-selection'
 
@@ -487,6 +487,18 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
     } catch (requestError) { setError(requestError.message || '证据核验失败') } finally { setBusy(false) }
   }
 
+  async function bulkReview() {
+    if (!window.confirm('确定一键复核全部监管要求、逐条解读并核验证据吗？元数据和附件范围仍需单独人工确认。')) return
+    setBusy(true)
+    setError('')
+    try {
+      const nextReview = await apiClient.bulkReview(taskId, session?.accessToken)
+      setReview(nextReview)
+      onReviewChanged(nextReview)
+      notify('已完成批量复核；请继续确认元数据并运行 QC')
+    } catch (requestError) { setError(requestError.message || '批量复核失败') } finally { setBusy(false) }
+  }
+
   async function runQc() {
     setBusy(true)
     setError('')
@@ -547,8 +559,8 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
     try {
       const report = await apiClient.exportDocx(taskId, session?.accessToken)
       setLastReport(report)
-      window.open(`${runtimeConfig.apiBaseUrl}${report.download_url}`, '_blank', 'noopener,noreferrer')
-      if (report.html_download_url) window.open(`${runtimeConfig.apiBaseUrl}${report.html_download_url}`, '_blank', 'noopener,noreferrer')
+      window.open(resolveApiUrl(runtimeConfig.apiBaseUrl, report.download_url), '_blank', 'noopener,noreferrer')
+      if (report.html_download_url) window.open(resolveApiUrl(runtimeConfig.apiBaseUrl, report.html_download_url), '_blank', 'noopener,noreferrer')
       await loadReview()
       notify('HTML 与 Word 交付物已生成，并通过一致性检查')
     } catch (requestError) { setError(requestError.message || '导出失败：请先通过 QC') } finally { setBusy(false) }
@@ -579,7 +591,7 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
   return <div className="modal-overlay" onClick={onClose}>
     <section className="review-panel" onClick={(event) => event.stopPropagation()}>
       <div className="modal-header"><div><span className="modal-kicker">STEP 10 · HUMAN REVIEW</span><h2>人工复核与交付闸门</h2></div><IconButton label="关闭人工复核" onClick={onClose}><X size={18} /></IconButton></div>
-      <div className="review-toolbar"><div><strong>{review.task.task_name}</strong><span>所有修改保留原文、证据定位和审计记录{contentPackage ? ` · Content Package v${contentPackage.package_version} 已锁定` : ''}</span></div><div className="review-toolbar-actions"><StatusTag tone={review.task.task_status === 'ready_for_export' || review.task.task_status === 'published' ? 'green' : 'review'}>{review.task.task_status}</StatusTag><button className="review-small-button" onClick={returnReview} disabled={busy || review.task.task_status === 'published'}>退回修改</button><button className="review-small-button" onClick={runLlmReview} disabled={busy}><ShieldCheck size={14} /> {busy ? '处理中…' : '运行 LLM Reviewer'}</button><button className="review-small-button" onClick={createContentPackage} disabled={busy}><Lock size={14} /> {busy ? '处理中…' : '生成锁定内容包'}</button><button className="run-pipeline-button" onClick={runQc} disabled={busy}><ClipboardCheck size={15} /> {busy ? '处理中…' : '运行 QC'}</button><button className="outline-action review-export" onClick={exportDocx} disabled={busy || review.task.task_status !== 'ready_for_export'}><Download size={15} /> 导出 Word</button><button className="review-save" onClick={publishReview} disabled={busy || review.task.task_status !== 'ready_for_export'}>发布</button></div></div>
+      <div className="review-toolbar"><div><strong>{review.task.task_name}</strong><span>所有修改保留原文、证据定位和审计记录{contentPackage ? ` · Content Package v${contentPackage.package_version} 已锁定` : ''}</span></div><div className="review-toolbar-actions"><StatusTag tone={review.task.task_status === 'ready_for_export' || review.task.task_status === 'published' ? 'green' : 'review'}>{review.task.task_status}</StatusTag><button className="review-save" onClick={bulkReview} disabled={busy || review.task.task_status === 'published'}><Check size={14} /> {busy ? '批量处理中…' : '一键复核全部'}</button><button className="review-small-button" onClick={returnReview} disabled={busy || review.task.task_status === 'published'}>退回修改</button><button className="review-small-button" onClick={runLlmReview} disabled={busy}><ShieldCheck size={14} /> {busy ? '处理中…' : '运行 LLM Reviewer'}</button><button className="review-small-button" onClick={createContentPackage} disabled={busy}><Lock size={14} /> {busy ? '处理中…' : '生成锁定内容包'}</button><button className="run-pipeline-button" onClick={runQc} disabled={busy}><ClipboardCheck size={15} /> {busy ? '处理中…' : '运行 QC'}</button><button className="outline-action review-export" onClick={exportDocx} disabled={busy || review.task.task_status !== 'ready_for_export'}><Download size={14} /> 导出 Word</button><button className="review-save" onClick={publishReview} disabled={busy || review.task.task_status !== 'ready_for_export'}>发布</button></div></div>
       {error && <div className="panel-error review-error"><AlertCircle size={15} />{error}</div>}
       {qc && <div className={`review-qc ${qc.status === 'blocker' ? 'is-blocked' : 'is-passed'}`}><div><strong>最近一次 QC：{qc.status}</strong><span>点击“运行 QC”会重新检查人工复核、证据、元数据和 S5 边界。</span></div><span>{blockers.length} 个阻断结果</span></div>}
       {llmReview && <div className={`review-qc ${llmReview.status === 'passed' ? 'is-passed' : 'is-blocked'}`}><div><strong>LLM Reviewer：{llmReview.status}</strong><span>{llmReview.status === 'not_configured' ? '未配置模型，不能声称完成模型复核。' : '模型结果仅作为复核意见，不能替代人工审核。'}</span></div><span>{llmReview.findings?.length || 0} 个发现</span></div>}
@@ -1227,7 +1239,7 @@ function ReportCenterPage({ reviewState, lastReport, onExport }) {
   const taskId = reviewState?.task?.task_id
   const wordUrl = report?.download_url || (report?.report_id && taskId ? `/api/tasks/${taskId}/exports/${report.report_id}` : null)
   const htmlUrl = report?.html_download_url || (report?.report_id && taskId ? `/api/tasks/${taskId}/exports/${report.report_id}/html` : null)
-  const openDownload = (url) => { if (url) window.open(`${runtimeConfig.apiBaseUrl}${url}`, '_blank', 'noopener,noreferrer') }
+  const openDownload = (url) => { if (url) window.open(resolveApiUrl(runtimeConfig.apiBaseUrl, url), '_blank', 'noopener,noreferrer') }
   return <section className="page-content"><PageHeader eyebrow="报告中心" title="交付物与导出记录" description="HTML 页面和 Word 报告共享同一个锁定 Content Package。" action={<StatusTag tone={ready ? 'green' : 'review'}>{ready ? '可交付' : '待复核'}</StatusTag>} /><div className="page-panel report-hero"><FileText size={28} /><div><strong>外规解读报告</strong><p>{ready ? '当前任务已满足导出条件，可生成 HTML 和 Word 交付物。' : '完成人工复核、规则 QC 和 Content Package 锁定后才能导出。'}</p></div><button className="run-pipeline-button" onClick={onExport} disabled={!ready}>生成交付物</button></div><div className="page-grid page-grid-two"><section className="page-panel"><div className="page-panel-head"><strong>报告组成</strong></div><div className="report-section-list">{['法规概览与适用性判断', '监管要求与数字表达', '逐条解读与版本比较', 'Evidence 链路与真实性边界'].map((item, index) => <div key={item}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item}</strong><StatusTag tone={ready ? 'green' : 'neutral'}>{ready ? '可导出' : '待复核'}</StatusTag></div>)}</div></section><section className="page-panel"><div className="page-panel-head"><strong>下载与一致性</strong>{reportReady && <StatusTag tone="green">检查通过</StatusTag>}</div><p className="page-body-note">{report ? `Package ${report.package_id || '—'} · SHA-256 ${String(report.content_hash || '').slice(0, 16)}…` : '生成后将在此显示 Content Package、文件下载和一致性结果。'}</p><div className="page-actions"><button className="outline-action" disabled={!wordUrl} onClick={() => openDownload(wordUrl)}><Download size={14} /> 下载 Word</button><button className="outline-action" disabled={!htmlUrl} onClick={() => openDownload(htmlUrl)}><ExternalLink size={14} /> 打开 HTML</button></div></section></div></section>
 }
 

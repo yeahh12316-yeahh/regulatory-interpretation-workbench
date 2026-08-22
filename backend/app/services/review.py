@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.config import get_settings
 from backend.app.db.models import Article, AuditLog, Evidence, Interpretation, QCResult, Requirement, RegulationVersion, Task
 from backend.app.services.evidence_service import validate_evidence_chain
+from backend.app.services.content_package_service import mark_packages_stale
 from backend.app.services.qc_rules import run_rule_checks
 from backend.app.services.result_ordering import order_article_records
 
@@ -252,3 +253,43 @@ def review_summary(objects: dict[str, Any]) -> dict[str, Any]:
         "verified_evidence": sum(item.verification_status == "verified" for item in objects["evidence"]),
         "total_evidence": len(objects["evidence"]),
     }
+
+
+def bulk_review_all(db: Session, task: Task, *, actor_id: str) -> dict[str, int]:
+    """Mark generated review objects in one audited transaction.
+
+    Metadata and attachment scope remain separate human decisions and are not
+    fabricated by this bulk action.
+    """
+    objects = get_latest_review_objects(db, task)
+    before_status = task.task_status
+    counts = {"requirements": 0, "interpretations": 0, "evidence": 0}
+
+    for requirement in objects["requirements"]:
+        before = _snapshot(requirement, ("review_status",))
+        if requirement.review_status != "reviewed":
+            requirement.review_status = "reviewed"
+            counts["requirements"] += 1
+            write_audit(db, task=task, actor_id=actor_id, action="BULK_REVIEW_REQUIREMENT", entity_type="requirement", entity_id=requirement.requirement_id, before_state=before, after_state={"review_status": "reviewed", "bulk": True})
+
+    for interpretation in [objects["overall"], *objects["article_interpretations"]]:
+        before = _snapshot(interpretation, ("review_status", "human_lock"))
+        if interpretation.review_status != "reviewed" or not interpretation.human_lock:
+            interpretation.review_status = "reviewed"
+            interpretation.human_lock = True
+            counts["interpretations"] += 1
+            write_audit(db, task=task, actor_id=actor_id, action="BULK_REVIEW_INTERPRETATION", entity_type="interpretation", entity_id=interpretation.interpretation_id, before_state=before, after_state={"review_status": "reviewed", "human_lock": True, "bulk": True})
+
+    for evidence in objects["evidence"]:
+        before = _snapshot(evidence, ("verification_status",))
+        if evidence.verification_status != "verified":
+            evidence.verification_status = "verified"
+            counts["evidence"] += 1
+            write_audit(db, task=task, actor_id=actor_id, action="BULK_VERIFY_EVIDENCE", entity_type="evidence", entity_id=evidence.evidence_id, before_state=before, after_state={"verification_status": "verified", "bulk": True})
+
+    task.task_status = "reviewing"
+    task.current_step = "HUMAN_REVIEW"
+    mark_packages_stale(db, task.task_id)
+    write_audit(db, task=task, actor_id=actor_id, action="BULK_REVIEW_ALL", entity_type="task", entity_id=task.task_id, before_state={"task_status": before_status}, after_state={"task_status": task.task_status, "counts": counts, "metadata_requires_manual_confirmation": True})
+    db.commit()
+    return counts

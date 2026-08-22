@@ -33,6 +33,7 @@ from backend.app.services.review import (
     ATTACHMENT_RESOLUTIONS,
     EVIDENCE_STATUSES,
     REVIEW_STATUSES,
+    bulk_review_all,
     get_latest_review_objects,
     latest_run_id,
     review_summary,
@@ -324,6 +325,20 @@ def run_review_qc(
         warnings=result["warnings"],
         results=[QCResultRead.model_validate(item) for item in result["results"]],
     )
+
+
+@router.post("/tasks/{task_id}/review/bulk", response_model=ReviewRead)
+def bulk_review(
+    task_id: str,
+    context: AuthContext = Depends(require_roles(*EDIT_ROLES)),
+    db: Session = Depends(get_db),
+) -> ReviewRead:
+    task = _get_task(db, task_id, context)
+    try:
+        bulk_review_all(db, task, actor_id=context.user.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _review_read(db, task)
 
 
 @router.post("/tasks/{task_id}/review/llm", response_model=LLMReviewRead)
