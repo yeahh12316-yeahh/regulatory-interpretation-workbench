@@ -5,11 +5,12 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import RegulationVersion, Task, VersionRelation
+from backend.app.db.models import RegulationVersion, Task, VersionRelation, WorkflowRun
 from backend.app.db.session import get_db
+from backend.app.services.comparison_sync import sync_workflow_s5_node
 from backend.app.security import AuthContext, require_roles
 from backend.app.services.review import write_audit
 from backend.app.services.version_compare import compare_regulation_versions
@@ -156,6 +157,9 @@ def run_s5_comparison(
     before_stage = (task.step_status or {}).get("S5")
     comparison = compare_regulation_versions(current, current.previous_version, relation_confirmed=_relation_confirmed(db, task, current))
     stage = _write_s5_stage(task, comparison)
+    workflow = db.scalar(select(WorkflowRun).where(WorkflowRun.task_id == task.task_id).order_by(desc(WorkflowRun.created_at)))
+    if workflow is not None:
+        sync_workflow_s5_node(workflow, stage)
     write_audit(
         db,
         task=task,

@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from backend.app.services.comparison_sync import sync_workflow_s5_node
 from backend.app.services.version_compare import compare_regulation_versions
 
 
@@ -90,3 +91,17 @@ def test_s5_compares_added_deleted_modified_and_numeric_changes_with_evidence():
     assert modified["text_diff"]
     assert by_type["ADDED"]["old_evidence"] is None
     assert by_type["DELETED"]["new_evidence"] is None
+
+
+def test_completed_s5_syncs_the_workflow_node_to_completed():
+    nodes = [SimpleNamespace(node_name=name, status="completed", progress=100, completed_at=None, output={}) for name in ("S1", "S2", "S3", "S4")]
+    nodes.append(SimpleNamespace(node_name="S5", status="blocked", progress=0, completed_at=None, output={}))
+    workflow = SimpleNamespace(nodes=nodes, status="completed", progress=90, current_node=None, completed_at=None)
+
+    sync_workflow_s5_node(workflow, {"stage_status": "completed", "output": {"comparison_status": "COMPLETED"}})
+
+    s5 = next(node for node in workflow.nodes if node.node_name == "S5")
+    assert s5.status == "completed"
+    assert s5.progress == 100
+    assert s5.output["comparison_status"] == "COMPLETED"
+    assert workflow.progress == 100
