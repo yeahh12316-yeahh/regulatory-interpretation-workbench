@@ -82,14 +82,19 @@ def get_latest_review_objects(db: Session, task: Task) -> dict[str, Any]:
     requirements = order_article_records(list(
         db.scalars(select(Requirement).where(Requirement.pipeline_run_id == run_id).order_by(Requirement.article_id, Requirement.requirement_id))
     ))
-    article_ids = {item.article_id for item in articles}
+    current_interpretations = [overall, *articles]
+    linked_evidence_ids = {
+        evidence_id
+        for interpretation in current_interpretations
+        for evidence_id in _linked_evidence_ids(interpretation)
+    }
     evidence = list(
         db.scalars(
             select(Evidence)
-            .where(Evidence.task_id == task.task_id, Evidence.article_id.in_(article_ids | {None}))
+            .where(Evidence.task_id == task.task_id, Evidence.evidence_id.in_(linked_evidence_ids))
             .order_by(Evidence.created_at, Evidence.evidence_id)
         )
-    ) if article_ids else []
+    ) if linked_evidence_ids else []
     qc_results = list(
         db.scalars(select(QCResult).where(QCResult.task_id == task.task_id).order_by(QCResult.created_at.desc(), QCResult.qc_id))
     )

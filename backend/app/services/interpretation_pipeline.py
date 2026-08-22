@@ -643,26 +643,52 @@ def run_s1_s4_pipeline(
 
     requirement_objects: list[Requirement] = []
     evidence_by_article: dict[str, Evidence] = {}
+    existing_evidence = {
+        (item.article_id, item.source_document_id): item
+        for item in db.scalars(
+            select(Evidence)
+            .where(
+                Evidence.task_id == task.task_id,
+                Evidence.regulation_id == regulation.regulation_id,
+                Evidence.source_document_id == source_document.document_id,
+                Evidence.article_id.is_not(None),
+            )
+            .order_by(Evidence.created_at, Evidence.evidence_id)
+        )
+    }
     requirement_counts: dict[str, int] = {}
     for article in articles:
-        evidence = Evidence(
-            evidence_id=_short_id("EVID"),
-            task_id=task.task_id,
-            regulation_id=regulation.regulation_id,
-            article_id=article.article_id,
-            source_document_id=source_document.document_id,
-            source_type="REGULATION_ORIGINAL",
-            locator={
+        evidence = existing_evidence.get((article.article_id, source_document.document_id))
+        if evidence is None:
+            evidence = Evidence(
+                evidence_id=_short_id("EVID"),
+                task_id=task.task_id,
+                regulation_id=regulation.regulation_id,
+                article_id=article.article_id,
+                source_document_id=source_document.document_id,
+                source_type="REGULATION_ORIGINAL",
+                locator={
+                    "article_no": article.article_no,
+                    "page": article.source_page,
+                    **(article.source_offset or {}),
+                    "sha256": source_document.sha256,
+                },
+                source_text=article.original_text,
+                description=f"{article.article_no} 原文证据；来源文件尚需人工核验后进入正式发布。",
+                verification_status="needs_review",
+            )
+            db.add(evidence)
+        else:
+            # Re-running S1-S4 must preserve the auditable evidence row and
+            # its human verification status instead of appending a duplicate.
+            evidence.locator = {
                 "article_no": article.article_no,
                 "page": article.source_page,
                 **(article.source_offset or {}),
                 "sha256": source_document.sha256,
-            },
-            source_text=article.original_text,
-            description=f"{article.article_no} 原文证据；来源文件尚需人工核验后进入正式发布。",
-            verification_status="needs_review",
-        )
-        db.add(evidence)
+            }
+            evidence.source_text = article.original_text
+            evidence.description = f"{article.article_no} 原文证据；来源文件尚需人工核验后进入正式发布。"
         evidence_by_article[article.article_id] = evidence
         parsed = extract_requirements(article)
         requirement_counts[article.article_id] = len(parsed)

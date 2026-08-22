@@ -217,6 +217,73 @@ def test_bulk_review_marks_all_reviewable_objects_and_writes_audit(tmp_path, mon
         get_settings.cache_clear()
 
 
+def test_repeated_current_pipeline_does_not_duplicate_current_evidence(tmp_path, monkeypatch):
+    """A rerun after registering a previous version must keep one evidence row per article."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("PRIVATE_MODE", "true")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        task = asyncio.run(request("POST", "/api/tasks", json={"task_id": "EVIDENCE_RERUN_TASK", "task_name": "证据重跑测试任务"}))
+        assert task.status_code == 201, task.text
+        current = asyncio.run(request(
+            "POST",
+            "/api/regulations/import",
+            files={"file": ("当前办法（2026年版）.pdf", build_review_fixture_pdf(), "application/pdf")},
+            data={"task_id": "EVIDENCE_RERUN_TASK", "version_label": "2026年版"},
+        ))
+        assert current.status_code == 201, current.text
+        current_payload = current.json()
+
+        first_run = asyncio.run(request(
+            "POST",
+            "/api/tasks/EVIDENCE_RERUN_TASK/interpret",
+            json={"institution_type": "商业银行", "business_scope": ["复核"], "region": "中国境内"},
+        ))
+        assert first_run.status_code == 200, first_run.text
+        assert len(first_run.json()["evidence"]) == 2
+
+        previous = asyncio.run(request(
+            "POST",
+            "/api/regulations/import",
+            files={"file": ("旧办法（2025年版）.pdf", build_review_fixture_pdf(), "application/pdf")},
+            data={
+                "task_id": "EVIDENCE_RERUN_TASK",
+                "regulation_id": current_payload["regulation"]["regulation_id"],
+                "version_label": "2025年版",
+                "version_role": "previous",
+            },
+        ))
+        assert previous.status_code == 201, previous.text
+
+        rerun = asyncio.run(request(
+            "POST",
+            "/api/tasks/EVIDENCE_RERUN_TASK/interpret",
+            json={"institution_type": "商业银行", "business_scope": ["复核"], "region": "中国境内"},
+        ))
+        assert rerun.status_code == 200, rerun.text
+        assert len(rerun.json()["evidence"]) == 2
+
+        review = asyncio.run(request("GET", "/api/tasks/EVIDENCE_RERUN_TASK/review"))
+        assert review.status_code == 200, review.text
+        assert len(review.json()["evidence"]) == 2
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
 def test_qc_pass_generates_a_downloadable_docx(tmp_path, monkeypatch):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)

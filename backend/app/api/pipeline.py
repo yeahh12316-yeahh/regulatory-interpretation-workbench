@@ -56,14 +56,18 @@ def _read_result(db: Session, task: Task) -> PipelineRunRead:
             .order_by(Requirement.article_id, Requirement.requirement_id)
         )
     ))
-    article_ids = {item.article_id for item in article_interpretations}
+    linked_evidence_ids = {
+        evidence.evidence_id
+        for interpretation in [overall, *article_interpretations]
+        for evidence in interpretation.evidence
+    }
     evidence = list(
         db.scalars(
             select(Evidence)
-            .where(Evidence.task_id == task.task_id, Evidence.article_id.in_(article_ids))
+            .where(Evidence.task_id == task.task_id, Evidence.evidence_id.in_(linked_evidence_ids))
             .order_by(Evidence.created_at, Evidence.evidence_id)
         )
-    ) if article_ids else []
+    ) if linked_evidence_ids else []
     return PipelineRunRead(
         pipeline_run_id=run_id,
         pipeline_version=task.processing_config.get("pipeline_version", "s1-s4-rule-based-v1"),
