@@ -109,6 +109,14 @@ function persistSession(session) {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
+function getInitialSession() {
+  const stored = readSession()
+  if (runtimeConfig.apiConfigured) {
+    return stored?.mode === 'api' && stored.accessToken ? stored : null
+  }
+  return stored || demoSession()
+}
+
 function AuthScreen({ onAuthenticated, onPreview }) {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ email: '', password: '', display_name: '', organization_name: '', organization_slug: '' })
@@ -582,7 +590,7 @@ function ReviewInterpretationCard({ item, onChange, onSave, busy }) {
 }
 
 function App() {
-  const [session, setSession] = useState(() => readSession() || demoSession())
+  const [session, setSession] = useState(getInitialSession)
   const [query, setQuery] = useState('')
   const [activeTask, setActiveTask] = useState('case-001')
   const [activePage, setActivePage] = useState('task')
@@ -633,6 +641,10 @@ function App() {
     apiClient.me(session.accessToken).catch(() => {})
     return undefined
   }, [session?.mode, session?.accessToken])
+
+  if (!session) {
+    return <AuthScreen onAuthenticated={setSession} onPreview={enterPreview} />
+  }
 
   function navigate(page) {
     setActivePage(page)
