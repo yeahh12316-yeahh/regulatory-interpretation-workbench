@@ -9,7 +9,7 @@
 | 步骤 | 状态 | 说明 |
 |---|---|---|
 | 第 1 步：冻结产品边界 | 已完成 | 面向多类型金融机构，只做外规识别、适用性、条款拆解、解读、证据和交付物 |
-| 第 2 步：验收法规与 Gold | 已完成（正文 Gold 基线） | 已冻结 2017 年版正文第一条至第二十五条、页码、机构适用性、12 个高风险事实点、数字字段和证据位置；文号与附件仍作为后续 QC 的待确认边界 |
+| 第 2 步：验收法规与 Gold | 已完成（正文 Gold 基线） | 已冻结 2017 年版正文第一条至第二十五条、页码、机构适用性、12 个高风险事实点、数字字段和证据位置；文号已由用户人工确认，附件仍作为后续 QC 的待确认边界 |
 | 第 3 步：信息架构和流程 | 已完成 | 顶部栏、左侧任务/目录、中间解读、右侧证据链 |
 | 第 4 步：页面实现与浏览验收 | 已完成 | 已完成黑色顶栏与左侧导航、Deloitte 官方白色 Logo、白底黑字、德勤绿交互、证据上传/定位及浏览器验收，并保存高保真原型图 |
 | 第 5 步：技术架构冻结 | 已完成 | 已冻结 React+Vite 前端、FastAPI API、PostgreSQL、Redis+Celery、S3/MinIO、可替换模型 Provider、异步 Workflow 和 Docker Compose 部署边界 |
@@ -35,7 +35,7 @@
 - 真实 CASE-001 已完成 4 页 PDF 上传、25 条款解析、异步 S1—S4 执行、S5 安全跳过、56 条 Requirement、25 条 Interpretation 和 25 条 Evidence 生成。
 - 规则 QC 以 109 个阻断项拦截正式发布；LLM Reviewer 明确返回 `not_configured`。
 - 自动化回归为 37 passed；Benchmark 为 6 cases / 20 assertions / 0 asset errors；容器、Compose、API、Web 反向代理和数据库/队列就绪检查均通过。
-- 正式发布尚未通过：文号需要人工核对，附1—附3缺失，Requirement/Interpretation/Evidence尚未完成逐项人工复核与锁定，LLM API Key 未配置，当前也不是公网生产环境。
+- 正式发布尚未通过：文号已由用户确认但尚未写入正式任务审核记录，附1—附3缺失，Requirement/Interpretation/Evidence尚未完成逐项人工复核与锁定，LLM API Key 未配置，当前也不是公网生产环境。
 - 完整验收证据见 `docs/ACCEPTANCE_REPORT_2026-08-22.md`。
 
 ## 第 4 步浏览验收证据
@@ -149,7 +149,7 @@
 - 测试：`tests/backend/test_review_api.py` 覆盖复核留痕、证据保护、QC 阻断、QC 通过和 DOCX 下载；本地隔离环境全量测试 `15 passed`，前端生产构建通过。
 - DOCX 视觉检查：已通过 LibreOffice 转 PDF、PNG 渲染复核；修正了中文字体映射和渲染环境字体配置后，2 页测试报告可读，无方框文字或明显溢出。
 - 真实法规核验：已用项目内 2017 年 PDF 在私有模式 SQLite 后端执行导入和 S1—S4；成功识别 25 条，QC 按设计阻断，阻断码包括 `UNRESOLVED_METADATA`、`MISSING_ATTACHMENT_SOURCE`、`EVIDENCE_NOT_VERIFIED`、`REQUIREMENT_NOT_REVIEWED` 和 `INTERPRETATION_NOT_LOCKED`。
-- 未完成：真实 2017 年 PDF 尚未完成“人工补充文号/附件处理 → 全量复核 → QC 通过 → 实际导出”的闭环；不能把本次阻断结果标记为可交付。
+- 未完成：真实 2017 年 PDF 尚未完成“将用户确认的文号写入任务元数据/附件边界确认 → 全量复核 → QC 通过 → 实际导出”的闭环；不能把本次阻断结果标记为可交付。
 
 ## 用户确认开发顺序：第 4 项交付（S1 元数据识别与人工修订闭环）
 
