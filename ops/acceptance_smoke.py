@@ -25,7 +25,9 @@ def main() -> int:
     task_id = f"LIVE_ACCEPTANCE_{suffix}"
     email = f"acceptance-{suffix}@example.com"
     password = f"Acceptance-{uuid4().hex[:16]}!"
-    client = httpx.Client(base_url=args.base_url.rstrip("/"), timeout=30, trust_env=False)
+    # OCR can take longer than a normal API request for a multi-page scan;
+    # keep the client timeout aligned with the overall acceptance budget.
+    client = httpx.Client(base_url=args.base_url.rstrip("/"), timeout=args.timeout, trust_env=False)
 
     def check(response: httpx.Response, expected: set[int]) -> dict:
         if response.status_code not in expected:

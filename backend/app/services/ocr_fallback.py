@@ -3,6 +3,9 @@
 The API keeps OCR optional so a text-based PDF remains lightweight. When the
 host provides Poppler and Tesseract, this adapter renders only the pages that
 have no extractable text and returns page-keyed OCR text for evidence mapping.
+Tesseract's automatic page segmentation mode is used first so rotated scans
+are handled without silently rotating source pages or changing their page
+locators.
 """
 
 from __future__ import annotations
@@ -77,7 +80,7 @@ def extract_ocr_pages(
                 if not image_candidates:
                     raise OCRUnavailableError(f"OCR 未生成第 {page_number} 页图像")
                 text_result = subprocess.run(
-                    [tesseract, str(image_candidates[0]), "stdout", "-l", languages, "--psm", "6"],
+                    [tesseract, str(image_candidates[0]), "stdout", "-l", languages, "--psm", "3"],
                     check=True,
                     capture_output=True,
                     text=True,

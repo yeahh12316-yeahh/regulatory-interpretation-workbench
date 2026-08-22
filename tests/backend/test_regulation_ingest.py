@@ -17,7 +17,7 @@ from backend.app.db.base import Base
 from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.ocr_fallback import OCRUnavailableError
-from backend.app.services.regulation_ingest import ParsedArticle, ParsedRegulation
+from backend.app.services.regulation_ingest import ParsedArticle, ParsedRegulation, parse_pdf
 
 
 def build_fixture_pdf() -> bytes:
@@ -218,6 +218,29 @@ def test_scanned_pdf_uses_ocr_fallback_and_keeps_page_evidence(tmp_path, monkeyp
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
+
+
+def test_cam_scanner_text_layer_triggers_ocr_and_strips_leading_scan_noise(tmp_path, monkeypatch):
+    class FakePage:
+        def extract_text(self):
+            return "Scanned by CamScanner"
+
+    class FakeReader:
+        pages = [FakePage()]
+
+    monkeypatch.setattr("backend.app.services.regulation_ingest.PdfReader", lambda path: FakeReader())
+    monkeypatch.setattr(
+        "backend.app.services.regulation_ingest.extract_ocr_pages",
+        lambda path, page_numbers: {1: ".第二十四条 金融企业可以根据本办法制定实施细则。"},
+    )
+    path = tmp_path / "cam-scanner.pdf"
+    path.write_bytes(b"placeholder")
+
+    parsed = parse_pdf(path)
+
+    assert [article.article_no for article in parsed.articles] == ["第二十四条"]
+    assert parsed.articles[0].source_offset["extraction_method"] == "ocr"
+    assert parsed.extraction_summary["ocr_pages"] == [1]
 
 
 def test_scanned_pdf_without_ocr_does_not_register_empty_version(tmp_path, monkeypatch):

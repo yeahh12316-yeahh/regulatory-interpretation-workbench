@@ -14,6 +14,7 @@ from backend.app.services.ocr_fallback import OCRUnavailableError, extract_ocr_p
 
 ARTICLE_PATTERN = re.compile(r"^(第[〇零一二三四五六七八九十百千万两0-9]+条)\s*(.*)$")
 CHAPTER_PATTERN = re.compile(r"^(第[〇零一二三四五六七八九十百千万两0-9]+章)\s*(.*)$")
+APPENDIX_MARKER_PATTERN = re.compile(r"(?:附\s*[:：]?\s*[123一二三]|附[件录]\s*[一二三123])")
 DOCUMENT_NO_PATTERN = re.compile(r"([\u4e00-\u9fffA-Za-z0-9·]{1,24}[〔(（]\d{4}[〕)）]\s*\d+\s*号)")
 DATE_PATTERN = re.compile(r"(20\d{2})[-年](\d{1,2})[-月](\d{1,2})")
 EFFECTIVE_PATTERN = re.compile(r"自(20\d{2})年(\d{1,2})月(\d{1,2})日起施行")
@@ -78,6 +79,20 @@ def _clean_page_lines(page_text: str) -> list[tuple[int, str]]:
     return lines
 
 
+def _is_scan_placeholder(page_text: str) -> bool:
+    """Treat image-only PDF markers as unreadable so OCR can run.
+
+    Some scanners add a tiny text layer such as ``Scanned by CamScanner``.
+    That layer is not regulatory content and must not suppress the OCR
+    fallback or make a scan appear successfully extracted.
+    """
+
+    compact = re.sub(r"\s+", "", normalize_text(page_text)).lower()
+    return compact in {"scannedbycamscanner", "scannedbycamscanner."} or (
+        "scannedbycamscanner" in compact and len(compact) <= 80
+    )
+
+
 def parse_pdf(
     path: str | Path,
     *,
@@ -86,8 +101,13 @@ def parse_pdf(
 ) -> ParsedRegulation:
     reader = PdfReader(str(path))
     pages = [(page.extract_text() or "") for page in reader.pages]
-    page_methods = ["pypdf" if text.strip() else "empty" for text in pages]
-    empty_pages = [page_number for page_number, text in enumerate(pages, start=1) if not text.strip()]
+    scan_pages = [
+        page_number
+        for page_number, text in enumerate(pages, start=1)
+        if not text.strip() or _is_scan_placeholder(text)
+    ]
+    page_methods = ["empty" if page_number in scan_pages else "pypdf" for page_number in range(1, len(pages) + 1)]
+    empty_pages = scan_pages
     warnings: list[str] = []
     ocr_pages: list[int] = []
     ocr_error: str | None = None
@@ -150,7 +170,7 @@ def parse_pdf(
             if chapter_match:
                 current_chapter = chapter_match.group(1)
                 continue
-            article_match = ARTICLE_PATTERN.match(line)
+            article_match = ARTICLE_PATTERN.match(re.sub(r"^[\s·•.,。；;:：\-—_]+", "", line))
             if article_match:
                 flush()
                 current = {
@@ -176,7 +196,7 @@ def parse_pdf(
         warnings.append("未识别到以‘第×条’开头的条款，请人工确认版式或补充 OCR")
     if any(not page.strip() for page in pages):
         warnings.append("部分页面没有可提取文本，可能需要 OCR")
-    if "附" in full_text and not re.search(r"附[件录]\s*[一二三四五六七八九十0-9]+", full_text):
+    if "附" in full_text and not APPENDIX_MARKER_PATTERN.search(full_text):
         warnings.append("正文提及附件，但当前文件中未可靠识别附件标题")
 
     return ParsedRegulation(
