@@ -494,6 +494,8 @@ h1 { color: #292d30; font-size: 18px; font-weight: 700; letter-spacing: -0.015em
 .review-llm-findings li { display: grid; gap: 2px; font-size: 11px; }
 .review-llm-findings strong { font-size: 10px; }
 .review-llm-findings span { line-height: 1.45; }
+.review-llm-disposition { display: flex; align-items: center; gap: 10px; margin: 10px 21px 0; padding: 10px 14px; border: 1px solid #d8dfc6; background: #f7faef; color: #53623a; font-size: 11px; }
+.review-llm-disposition span { flex: 1; line-height: 1.45; }
 .review-error { margin: 14px 21px 0; }
 .review-empty { display: grid; justify-items: center; gap: 10px; padding: 75px 24px; color: #6d797f; }
 .review-empty strong { color: #414b51; font-size: 14px; }

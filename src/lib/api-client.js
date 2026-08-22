@@ -109,6 +109,7 @@ export const apiClient = {
   updateReviewEvidence: (taskId, evidenceId, body, token) => request(`/tasks/${taskId}/review/evidence/${evidenceId}`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   runReviewQc: (taskId, token) => request(`/tasks/${taskId}/review/qc`, { method: 'POST' }, token),
   runLlmReview: (taskId, token) => request(`/tasks/${taskId}/review/llm`, { method: 'POST' }, token),
+  decideLlmReview: (taskId, body, token) => request(`/tasks/${taskId}/review/llm/decision`, { method: 'POST', body: JSON.stringify(body) }, token),
   reviewDecision: (taskId, body, token) => request(`/tasks/${taskId}/review/decision`, { method: 'POST', body: JSON.stringify(body) }, token),
   exportDocx: (taskId, token) => request(`/tasks/${taskId}/export/docx`, { method: 'POST' }, token),
 }

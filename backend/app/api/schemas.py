@@ -343,10 +343,20 @@ class QCResultRead(BaseModel):
     created_at: datetime
 
 
+class LLMReviewRead(BaseModel):
+    status: str
+    review_run_id: str
+    provider: str
+    model: str
+    findings: list[dict[str, Any]]
+    human_disposition: dict[str, Any] | None = None
+
+
 class ReviewRead(PipelineRunRead):
     qc_results: list[QCResultRead]
     audit_log_count: int
     review_summary: dict[str, Any]
+    llm_review: LLMReviewRead | None = None
 
 
 class ContentPackageRead(BaseModel):
@@ -374,12 +384,9 @@ class QCReportRead(BaseModel):
     results: list[QCResultRead]
 
 
-class LLMReviewRead(BaseModel):
-    status: str
-    review_run_id: str
-    provider: str
-    model: str
-    findings: list[dict[str, Any]]
+class LLMReviewDecisionRequest(BaseModel):
+    decision: str = Field(description="accept 或 return")
+    reason: str = Field(min_length=8, max_length=1000)
 
 
 class ReviewDecisionRequest(BaseModel):

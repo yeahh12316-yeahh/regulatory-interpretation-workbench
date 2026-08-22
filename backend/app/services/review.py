@@ -101,6 +101,13 @@ def get_latest_review_objects(db: Session, task: Task) -> dict[str, Any]:
     latest_qc_run_id = (task.last_checkpoint or {}).get("qc_run_id")
     if latest_qc_run_id:
         qc_results = [item for item in qc_results if (item.findings or {}).get("qc_run_id") == latest_qc_run_id]
+    latest_llm = db.scalar(
+        select(QCResult)
+        .where(QCResult.task_id == task.task_id, QCResult.check_type == "LLM_REVIEW")
+        .order_by(QCResult.created_at.desc(), QCResult.qc_id)
+    )
+    if latest_llm is not None and all(item.qc_id != latest_llm.qc_id for item in qc_results):
+        qc_results.insert(0, latest_llm)
     audit_count = len(list(db.scalars(select(AuditLog).where(AuditLog.task_id == task.task_id))))
     return {
         "run_id": run_id,
@@ -109,6 +116,7 @@ def get_latest_review_objects(db: Session, task: Task) -> dict[str, Any]:
         "requirements": requirements,
         "evidence": evidence,
         "qc_results": qc_results,
+        "llm_review": latest_llm,
         "audit_log_count": audit_count,
     }
 
@@ -220,8 +228,12 @@ def run_quality_check(db: Session, task: Task, *, actor_id: str) -> dict[str, An
             (blockers if llm_required else warnings).append(finding)
         else:
             details = latest_llm.findings or {}
-            finding = {"code": details.get("code", "LLM_REVIEW_NEEDS_REVISION"), "target_type": "task", "target_id": task.task_id, "message": details.get("message", "LLM Reviewer 返回了需要处理的结果。")}
-            (blockers if llm_required or llm_status == "blocker" else warnings).append(finding)
+            disposition = details.get("human_disposition") or {}
+            if llm_status == "warning" and disposition.get("decision") == "accepted":
+                warnings.append({"code": "LLM_REVIEW_HUMAN_ACCEPTED", "target_type": "task", "target_id": task.task_id, "message": "LLM Reviewer 的发现项已由人工复核接受，原始警示和处置理由已保留。"})
+            else:
+                finding = {"code": details.get("code", "LLM_REVIEW_NEEDS_REVISION"), "target_type": "task", "target_id": task.task_id, "message": details.get("message", "LLM Reviewer 返回了需要处理的结果。")}
+                (blockers if llm_required or llm_status == "blocker" else warnings).append(finding)
 
     for finding in blockers:
         created.append(_add_finding(db, task, target_type=finding["target_type"], target_id=finding["target_id"], check_type="REVIEW_GATE", status="blocker", code=finding["code"], message=finding["message"], details={"qc_run_id": qc_run_id}))

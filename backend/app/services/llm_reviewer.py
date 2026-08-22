@@ -113,7 +113,7 @@ def run_llm_review(db: Session, task: Task, *, actor_id: str) -> dict[str, Any]:
         )
         write_audit(db, task=task, actor_id=actor_id, action="RUN_LLM_REVIEW", entity_type="task", entity_id=task.task_id, before_state={}, after_state={"status": "not_configured", "review_run_id": review_run_id})
         db.commit()
-        return {"status": "not_configured", "review_run_id": review_run_id, "provider": settings.llm_provider, "model": settings.llm_model, "findings": [result.findings]}
+        return {"status": "not_configured", "review_run_id": review_run_id, "provider": settings.llm_provider, "model": settings.llm_model, "findings": [result.findings], "human_disposition": None}
 
     prompt = json.dumps(
         {
@@ -153,4 +153,4 @@ def run_llm_review(db: Session, task: Task, *, actor_id: str) -> dict[str, Any]:
     )
     write_audit(db, task=task, actor_id=actor_id, action="RUN_LLM_REVIEW", entity_type="task", entity_id=task.task_id, before_state={}, after_state={"status": status, "review_run_id": review_run_id})
     db.commit()
-    return {"status": status, "review_run_id": review_run_id, "provider": settings.llm_provider, "model": settings.llm_model, "findings": result.findings.get("findings", [result.findings])}
+    return {"status": status, "review_run_id": review_run_id, "provider": settings.llm_provider, "model": settings.llm_model, "findings": result.findings.get("findings", [result.findings]), "human_disposition": result.findings.get("human_disposition")}

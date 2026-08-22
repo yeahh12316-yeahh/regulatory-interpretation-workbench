@@ -16,6 +16,7 @@ from backend.app.api.schemas import (
     InterpretationRead,
     InterpretationReviewUpdate,
     LLMReviewRead,
+    LLMReviewDecisionRequest,
     MetadataReviewUpdate,
     QCReportRead,
     QCResultRead,
@@ -26,7 +27,7 @@ from backend.app.api.schemas import (
     TaskRead,
 )
 from backend.app.core.config import get_settings
-from backend.app.db.models import Article, ContentPackage, Evidence, Interpretation, RegulationVersion, Requirement, Task
+from backend.app.db.models import Article, ContentPackage, Evidence, Interpretation, QCResult, RegulationVersion, Requirement, Task
 from backend.app.db.session import get_db
 from backend.app.security import AuthContext, CurrentContext, require_roles
 from backend.app.services.review import (
@@ -81,6 +82,14 @@ def _review_read(db: Session, task: Task) -> ReviewRead:
         qc_results=[QCResultRead.model_validate(item) for item in objects["qc_results"]],
         audit_log_count=objects["audit_log_count"],
         review_summary=review_summary(objects),
+        llm_review=(LLMReviewRead(
+            status=objects["llm_review"].status,
+            review_run_id=(objects["llm_review"].findings or {}).get("review_run_id", ""),
+            provider=(objects["llm_review"].findings or {}).get("provider", ""),
+            model=(objects["llm_review"].findings or {}).get("model", ""),
+            findings=(objects["llm_review"].findings or {}).get("findings", []),
+            human_disposition=(objects["llm_review"].findings or {}).get("human_disposition"),
+        ) if objects.get("llm_review") is not None else None),
     )
 
 
@@ -364,6 +373,57 @@ def run_review_llm(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return LLMReviewRead(**result)
+
+
+@router.post("/tasks/{task_id}/review/llm/decision", response_model=LLMReviewRead)
+def decide_review_llm(
+    task_id: str,
+    payload: LLMReviewDecisionRequest,
+    context: AuthContext = Depends(require_roles(*EDIT_ROLES)),
+    db: Session = Depends(get_db),
+) -> LLMReviewRead:
+    task = _get_task(db, task_id, context)
+    decision = payload.decision.strip().lower()
+    if decision not in {"accept", "return"}:
+        raise HTTPException(status_code=422, detail="decision 必须为 accept 或 return")
+    latest = db.scalar(
+        select(QCResult)
+        .where(QCResult.task_id == task.task_id, QCResult.check_type == "LLM_REVIEW")
+        .order_by(QCResult.created_at.desc(), QCResult.qc_id)
+    )
+    if latest is None:
+        raise HTTPException(status_code=409, detail="请先运行 LLM Reviewer")
+    if latest.status != "warning":
+        raise HTTPException(status_code=409, detail="只有返回 warning 的 Reviewer 结果需要人工处置；failed 或未配置不能被接受")
+    before = dict(latest.findings or {})
+    disposition = {
+        "decision": "accepted" if decision == "accept" else "returned",
+        "reason": payload.reason.strip(),
+        "actor_id": context.user.user_id,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    latest.findings = {**before, "human_disposition": disposition}
+    write_audit(
+        db,
+        task=task,
+        actor_id=context.user.user_id,
+        action="LLM_REVIEW_HUMAN_DISPOSITION",
+        entity_type="task",
+        entity_id=task.task_id,
+        before_state={"llm_review": before.get("human_disposition")},
+        after_state={"llm_review": disposition},
+    )
+    db.commit()
+    db.refresh(latest)
+    details = latest.findings or {}
+    return LLMReviewRead(
+        status=latest.status,
+        review_run_id=details.get("review_run_id", ""),
+        provider=details.get("provider", ""),
+        model=details.get("model", ""),
+        findings=details.get("findings", []),
+        human_disposition=details.get("human_disposition"),
+    )
 
 
 @router.post("/tasks/{task_id}/review/decision", response_model=TaskRead)

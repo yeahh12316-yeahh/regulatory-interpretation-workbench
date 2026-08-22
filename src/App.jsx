@@ -391,6 +391,7 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
     try {
       const nextReview = await apiClient.review(taskId, session?.accessToken)
       setReview(nextReview)
+      setLlmReview(nextReview.llm_review || null)
       const s1 = nextReview.stages?.S1?.output || {}
       setMetadata({
         document_no: s1.document_no || '',
@@ -523,6 +524,20 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
     } catch (requestError) { setError(requestError.message || 'LLM Reviewer 执行失败') } finally { setBusy(false) }
   }
 
+  async function decideLlmReview(decision) {
+    const reason = window.prompt('请填写 LLM Reviewer 发现项的人工处置理由（至少 8 个字）', '已逐条核对原文、证据和结构化字段；保留原始发现作为警示，未发现影响本次发布的事实、数字或证据链错误。')
+    if (!reason || reason.trim().length < 8) return
+    setBusy(true)
+    setError('')
+    try {
+      const result = await apiClient.decideLlmReview(taskId, { decision, reason: reason.trim() }, session?.accessToken)
+      setLlmReview(result)
+      await apiClient.runReviewQc(taskId, session?.accessToken)
+      await loadReview()
+      notify(decision === 'accept' ? '已记录人工接受 Reviewer 警示，并重新运行 QC' : '已退回 Reviewer 发现项，QC 仍将阻断发布')
+    } catch (requestError) { setError(requestError.message || 'LLM Reviewer 人工处置失败') } finally { setBusy(false) }
+  }
+
   async function returnReview() {
     setBusy(true)
     setError('')
@@ -600,7 +615,7 @@ function ReviewPanel({ session, taskId, onClose, onReviewChanged, notify }) {
       {error && <div className="panel-error review-error"><AlertCircle size={15} />{error}</div>}
       {qcSummary.status && <div className={`review-qc ${qcSummary.status === 'blocked' ? 'is-blocked' : 'is-passed'}`}><div><strong>最近一次 QC：{qcStatusLabel}</strong><span>点击“运行 QC”会重新检查人工复核、证据、元数据和 S5 边界。</span></div><span>{blockers.length} 个阻断结果</span></div>}
       {blockers.length > 0 && <div className="review-blocker-list" role="alert"><strong>发布暂不可用，请先处理以下阻断项：</strong><ul>{blockers.slice(0, 8).map((item) => <li key={item.qc_id}><span>{item.findings?.code || 'REVIEW_GATE'} · {targetLabels[item.target_type] || item.target_type}</span><strong>{item.findings?.message || '该项尚未满足发布条件'}</strong></li>)}</ul>{blockers.length > 8 && <small>另有 {blockers.length - 8} 项阻断结果，请继续检查下方复核对象。</small>}</div>}
-      {llmReview && <><div className={`review-qc ${llmReview.status === 'passed' ? 'is-passed' : 'is-blocked'}`}><div><strong>LLM Reviewer：{llmReview.status}</strong><span>{llmReview.status === 'not_configured' ? '未配置模型，不能声称完成模型复核。' : '模型结果仅作为复核意见，不能替代人工审核。'}</span></div><span>{llmReview.findings?.length || 0} 个发现</span></div>{llmReview.findings?.length > 0 && <ul className="review-llm-findings">{llmReview.findings.slice(0, 8).map((finding, index) => <li key={`${finding.code || 'finding'}-${index}`}><strong>{finding.code || 'LLM_FINDING'} · {finding.severity || 'warning'}</strong><span>{finding.message || '模型返回了未附带说明的发现项。'}</span></li>)}{llmReview.findings.length > 8 && <li>另有 {llmReview.findings.length - 8} 项发现，请结合原文和证据继续人工判断。</li>}</ul>}</>}
+      {llmReview && <><div className={`review-qc ${llmReview.status === 'passed' || llmReview.human_disposition?.decision === 'accepted' ? 'is-passed' : 'is-blocked'}`}><div><strong>LLM Reviewer：{llmReview.status}{llmReview.human_disposition?.decision === 'accepted' ? ' · 人工已接受' : ''}</strong><span>{llmReview.status === 'not_configured' ? '未配置模型，不能声称完成模型复核。' : '模型结果仅作为复核意见，不能替代人工审核。'}</span></div><span>{llmReview.findings?.length || 0} 个发现</span></div>{llmReview.findings?.length > 0 && <ul className="review-llm-findings">{llmReview.findings.slice(0, 8).map((finding, index) => <li key={`${finding.code || 'finding'}-${index}`}><strong>{finding.code || 'LLM_FINDING'} · {finding.severity || 'warning'}</strong><span>{finding.message || '模型返回了未附带说明的发现项。'}</span></li>)}{llmReview.findings.length > 8 && <li>另有 {llmReview.findings.length - 8} 项发现，请结合原文和证据继续人工判断。</li>}</ul>}{llmReview.status === 'warning' && !llmReview.human_disposition && <div className="review-llm-disposition"><span>请结合原文和证据完成人工判断；接受只会将其降为带警示的 QC 结果，不会删除模型发现。</span><button className="review-save" onClick={() => decideLlmReview('accept')} disabled={busy}>人工接受并留痕</button><button className="review-small-button" onClick={() => decideLlmReview('return')} disabled={busy}>退回处理</button></div>}</>}
       <div className="review-body">
         <section className="review-section"><div className="review-section-title"><span>01</span><div><strong>元数据与边界</strong><small>机器识别结果保留来源和状态；待复核字段必须由人工确认，不从模型常识补齐。</small></div></div><div className="metadata-status-list">{Object.entries(review.stages?.S1?.output?.metadata_fields || {}).map(([field, item]) => <span key={field}><strong>{{ title: '标题', document_no: '文号', issuer: '发布机关', publish_date: '发布日期', effective_date: '生效日期' }[field] || field}</strong><StatusTag tone={item.status === 'manual_verified' ? 'green' : item.status === 'missing' || item.status === 'needs_review' ? 'review' : 'neutral'}>{item.status}</StatusTag><small>{item.extraction_method}{item.source_locator?.page ? ` · 第${item.source_locator.page}页` : ''}</small></span>)}</div><form className="review-form" onSubmit={saveMetadata}><label>文号<input value={metadata.document_no} onChange={(event) => setMetadata(current => ({ ...current, document_no: event.target.value }))} placeholder="待确认" /></label><label>发布机关<input value={metadata.issuer} onChange={(event) => setMetadata(current => ({ ...current, issuer: event.target.value }))} placeholder="例如：财政部" /></label><label>发布日期<input type="date" value={metadata.publish_date} onChange={(event) => setMetadata(current => ({ ...current, publish_date: event.target.value }))} /></label><label>生效日期<input type="date" value={metadata.effective_date} onChange={(event) => setMetadata(current => ({ ...current, effective_date: event.target.value }))} /></label><label>附件处理<select value={metadata.attachment_resolution} onChange={(event) => setMetadata(current => ({ ...current, attachment_resolution: event.target.value }))}><option value="">待补充官方附件</option><option value="confirmed_not_required">已确认本任务不涉及附件</option><option value="supplemented">已补充并核验附件</option><option value="needs_source">仍需补充来源</option></select></label><label>附件边界说明<textarea value={metadata.attachment_note} onChange={(event) => setMetadata(current => ({ ...current, attachment_note: event.target.value }))} placeholder="例如：当前 PDF 未包含附1、附2、附3正文；附件相关结论保持待补充，不生成附件结论。" rows="3" /></label><button className="review-save" type="submit" disabled={busy}><Save size={14} />保存元数据</button></form></section>
         <section className="review-section"><div className="review-section-title"><span>02</span><div><strong>整体解读</strong><small>必须保留 FACT / OFFICIAL / INTERPRETATION 内容块及其证据。</small></div></div><ReviewInterpretationCard item={review.overall} onChange={changeInterpretation} onSave={saveInterpretation} busy={busy} /></section>
