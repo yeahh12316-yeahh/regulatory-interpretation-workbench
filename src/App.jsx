@@ -109,14 +109,6 @@ function persistSession(session) {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
-function getInitialSession() {
-  const stored = readSession()
-  if (runtimeConfig.apiConfigured) {
-    return stored?.mode === 'api' && stored.accessToken ? stored : null
-  }
-  return stored || demoSession()
-}
-
 function AuthScreen({ onAuthenticated, onPreview }) {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ email: '', password: '', display_name: '', organization_name: '', organization_slug: '' })
@@ -590,7 +582,13 @@ function ReviewInterpretationCard({ item, onChange, onSave, busy }) {
 }
 
 function App() {
-  const [session, setSession] = useState(getInitialSession)
+  const [session, setSession] = useState(() => {
+    const stored = readSession()
+    if (runtimeConfig.apiConfigured) return stored?.mode === 'api' && stored.accessToken ? stored : null
+    return stored || demoSession()
+  })
+  const [guestAccessError, setGuestAccessError] = useState('')
+  const [guestRetry, setGuestRetry] = useState(0)
   const [query, setQuery] = useState('')
   const [activeTask, setActiveTask] = useState('case-001')
   const [activePage, setActivePage] = useState('task')
@@ -642,8 +640,26 @@ function App() {
     return undefined
   }, [session?.mode, session?.accessToken])
 
-  if (!session) {
-    return <AuthScreen onAuthenticated={setSession} onPreview={enterPreview} />
+  useEffect(() => {
+    if (!runtimeConfig.apiConfigured || session) return undefined
+    let cancelled = false
+    setGuestAccessError('')
+    apiClient.guestSession()
+      .then((auth) => apiClient.currentOrganization(auth.access_token).then((organization) => ({ auth, organization })))
+      .then(({ auth, organization }) => {
+        if (cancelled) return
+        const nextSession = { mode: 'api', accessToken: auth.access_token, user: auth.user, organization }
+        persistSession(nextSession)
+        setSession(nextSession)
+      })
+      .catch((requestError) => {
+        if (!cancelled) setGuestAccessError(requestError.message || '公开工作台暂时无法连接，请重试')
+      })
+    return () => { cancelled = true }
+  }, [guestRetry, session])
+
+  if (!session && runtimeConfig.apiConfigured) {
+    return <PublicGuestLoading error={guestAccessError} onRetry={() => setGuestRetry((value) => value + 1)} />
   }
 
   function navigate(page) {
@@ -1019,6 +1035,10 @@ function App() {
       {reviewPanelOpen && <ReviewPanel session={session} taskId={pipelineTaskId} onClose={() => setReviewPanelOpen(false)} onReviewChanged={(nextReview) => { setReviewState(nextReview); setPipelineResult(nextReview) }} notify={notify} />}
     </div>
   )
+}
+
+function PublicGuestLoading({ error, onRetry }) {
+  return <div className="auth-shell"><div className="auth-card"><div className="auth-brand"><img className="deloitte-logo" src={`${import.meta.env.BASE_URL}assets/deloitte-logo-white.png`} alt="Deloitte" /><span>外规解读智能体工作台</span></div><div className="auth-kicker">PUBLIC WORKSPACE</div><h1>{error ? '公开工作台连接失败' : '正在连接公开工作台…'}</h1><p className="auth-description">无需注册或登录，系统会自动为当前浏览器创建隔离的匿名工作空间。</p>{error ? <><div className="auth-error"><AlertCircle size={15} />{error}</div><button className="auth-submit" onClick={onRetry}>重新连接</button></> : <div className="auth-footer"><RefreshCw className="spin" size={14} />正在准备匿名工作空间</div>}</div></div>
 }
 
 function SectionTitle({ children, action }) {

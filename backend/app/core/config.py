@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     data_dir: str = "/data/regulatory-workbench"
     web_origin: str = "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:18080"
     private_mode: bool = False
+    public_guest_mode: bool = False
     private_org_name: str = "私有工作台"
     private_org_slug: str = "private-workbench"
     llm_provider: str = "rule_based"

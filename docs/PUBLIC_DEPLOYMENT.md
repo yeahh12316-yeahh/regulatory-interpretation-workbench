@@ -7,6 +7,7 @@
 - Workflow：API 内联执行，不部署独立 Worker。
 - 数据库：Render Free PostgreSQL。
 - 队列：Render Free Key Value（Redis 兼容，但不持久化）。
+- 访问方式：公开匿名模式，无登录界面；系统为每个浏览器自动创建隔离的匿名工作空间。
 - 上传文件和报告：临时文件系统，仅用于演示；重启或休眠后可能丢失。
 - HTTPS：GitHub Pages 和 Render 默认提供 HTTPS；自定义域名可在对应平台继续绑定。
 
@@ -59,6 +60,10 @@ VITE_API_BASE_URL=https://regulatory-interpretation-api.onrender.com/api
 ```text
 https://yeahh12316-yeahh.github.io/regulatory-interpretation-workbench/
 ```
+
+## 公开匿名模式的边界
+
+公开匿名模式通过 `PUBLIC_GUEST_MODE=true` 自动创建浏览器级匿名工作空间，保持网站打开即用且不显示登录界面。匿名令牌保存在当前浏览器中，其他浏览器不会看到该工作空间的数据。该模式仍适合公开验证，不应上传真实敏感法规、客户资料或正式生产数据。
 
 ## 仍需人工完成的生产验收
 

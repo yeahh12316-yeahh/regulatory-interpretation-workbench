@@ -23,6 +23,8 @@ services:
         value: /tmp/regulatory-workbench
       - key: PRIVATE_MODE
         value: "false"
+      - key: PUBLIC_GUEST_MODE
+        value: "true"
       - key: DATABASE_URL
         fromDatabase:
           name: regulatory-interpretation-postgres

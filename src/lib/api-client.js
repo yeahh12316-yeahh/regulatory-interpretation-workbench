@@ -25,6 +25,7 @@ async function request(path, options = {}, accessToken) {
 }
 
 export const apiClient = {
+  guestSession: () => request('/auth/guest', { method: 'POST' }),
   login: (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   register: (body) => request('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   me: (token) => request('/auth/me', {}, token),

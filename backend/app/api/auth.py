@@ -19,6 +19,41 @@ def _id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
 
 
+@router.post("/guest", response_model=TokenRead)
+def guest(db: Session = Depends(get_db)) -> TokenRead:
+    """Create a browser-scoped anonymous workspace without showing a login UI."""
+    from backend.app.core.config import get_settings
+
+    if not get_settings().public_guest_mode:
+        raise HTTPException(status_code=404, detail="guest access is disabled")
+
+    guest_id = uuid4().hex[:16]
+    organization = Organization(
+        organization_id=_id("ORG_GUEST"),
+        name="公开匿名工作空间",
+        slug=f"public-guest-{guest_id}",
+    )
+    user = User(
+        user_id=_id("USR_GUEST"),
+        email=f"guest-{guest_id}@public-workbench.com",
+        password_hash=f"guest-only${guest_id}",
+        display_name="公开访客",
+    )
+    membership = OrganizationMember(
+        member_id=_id("MEM_GUEST"),
+        organization=organization,
+        user=user,
+        role="owner",
+    )
+    db.add_all([organization, user, membership])
+    db.commit()
+    return TokenRead(
+        access_token=create_access_token(user.user_id, organization.organization_id),
+        user=UserRead.model_validate(user),
+        organization_id=organization.organization_id,
+    )
+
+
 @router.post("/register", response_model=TokenRead, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRead:
     email = payload.email.strip().lower()

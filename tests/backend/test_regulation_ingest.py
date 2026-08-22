@@ -162,6 +162,41 @@ def test_private_mode_allows_single_team_api_without_login(tmp_path, monkeypatch
         get_settings.cache_clear()
 
 
+def test_public_guest_mode_allows_anonymous_isolated_api(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    monkeypatch.setenv("PRIVATE_MODE", "false")
+    monkeypatch.setenv("PUBLIC_GUEST_MODE", "true")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        guest = asyncio.run(request("POST", "/api/auth/guest"))
+        assert guest.status_code == 200, guest.text
+        token = guest.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        regulation = asyncio.run(
+            request("POST", "/api/regulations", json={"title": "公开匿名法规", "issuer": ["测试机关"]}, headers=headers)
+        )
+        assert regulation.status_code == 201, regulation.text
+        listed = asyncio.run(request("GET", "/api/regulations", headers=headers))
+        assert listed.status_code == 200
+        assert listed.json()[0]["title"] == "公开匿名法规"
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
 def test_scanned_pdf_uses_ocr_fallback_and_keeps_page_evidence(tmp_path, monkeypatch):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
