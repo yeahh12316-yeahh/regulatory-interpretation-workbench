@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,24 @@ class Settings(BaseSettings):
     prometheus_enabled: bool = True
     workflow_execution_mode: str = "celery"
     workflow_allow_inline_fallback: bool = False
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_postgres_driver(cls, value: str) -> str:
+        """Use the installed psycopg 3 driver for provider connection URLs.
+
+        Managed Postgres providers commonly expose ``postgres://`` or
+        ``postgresql://`` URLs. SQLAlchemy otherwise defaults those URLs to
+        the uninstalled psycopg2 driver, even though this project ships
+        psycopg 3.
+        """
+
+        if not isinstance(value, str):
+            return value
+        for prefix in ("postgres://", "postgresql://", "postgresql+psycopg2://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
 
     model_config = SettingsConfigDict(
         # Local secrets belong in the ignored .env.local; .env remains the
