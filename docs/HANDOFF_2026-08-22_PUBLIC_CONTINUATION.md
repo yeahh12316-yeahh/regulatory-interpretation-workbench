@@ -235,6 +235,17 @@ CASE-001 是 2017 年金融企业呆账核销管理办法任务，当前真实�
 - GitHub Actions CI 已通过：提交 `8c40ccd` 的 backend-worker、frontend、compose-smoke 全部成功；Pages 已发布新构建 `assets/index-DZ7LCuZf.js`。
 - 发布后的公网页面已强制刷新验收：真实任务列表恢复为 1 个任务，Workflow 恢复为 100%，S1—S4 为 completed，S5 为 skipped，56 条要求、25 条逐条解读和“待人工复核”均恢复。第 1 步正式关闭。
 
+### 第 1 步复验修正（2026-08-23，优先于上文旧记录）
+
+上面的 2026-08-22 记录是在用户提供旧规之前形成的，不能继续作为当前事实。用户已提供 `/Users/yeahh/Documents/ChatGPT/外规解读agent/金融企业呆账核销管理办法(财金〔2015〕60号).pdf`，并在公网匿名浏览器中完成旧规上传、解析、挂接当前 2017 年任务、版本关系确认、S5 比较和刷新恢复。
+
+- 2015 年旧规：11 页、26 条款、SHA-256 `5e46bc7e…61956`；
+- 2017 年当前规：4 页、25 条款；
+- S1—S4：completed；56 条 Requirement、25 条逐条 Interpretation；
+- S5：completed，27 条变化（新增 1、删除 2、修改 24）；
+- 刷新后：任务、证据、解读和 S1—S5 全部恢复，Workflow 100%；
+- 第 1 步以复验报告 `docs/ACCEPTANCE_REPORT_2026-08-23_STEP1_RECHECK.md` 为准，已关闭；第 2 步尚未开始。
+
 新会话不要重复实现第 1—19 项，也不要先做页面重设计。建议顺序如下：
 
 ### 待办 1：关闭公网上传验证阻塞
