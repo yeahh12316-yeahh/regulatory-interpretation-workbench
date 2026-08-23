@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from backend.app.core.config import get_settings
 from backend.app.db import model_registry  # noqa: F401
 from backend.app.db.base import Base
+from backend.app.db.models import QCResult
 from backend.app.db.session import get_db
 from backend.app.main import app
 
@@ -165,6 +166,71 @@ def test_qc_blocks_export_until_all_results_are_reviewed(tmp_path, monkeypatch):
 
         export = asyncio.run(request("POST", "/api/tasks/QC_TASK/export/docx"))
         assert export.status_code == 409, export.text
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_qc_runs_required_llm_reviewer_before_gate(tmp_path, monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    def db_override():
+        with Session(engine) as session:
+            yield session
+
+    async def request(method: str, path: str, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.request(method, path, **kwargs)
+
+    from backend.app.api import review as review_api
+
+    calls = []
+
+    def fake_llm_review(db, task, *, actor_id):
+        calls.append((task.task_id, actor_id))
+        db.add(QCResult(
+            qc_id="LLM_AUTO_QC",
+            task_id=task.task_id,
+            target_type="task",
+            target_id=task.task_id,
+            check_type="LLM_REVIEW",
+            status="passed",
+            findings={"code": "LLM_REVIEW_PASSED", "review_run_id": "LLM_AUTO_RUN", "provider": "test", "model": "test", "findings": []},
+        ))
+        db.commit()
+        return {"status": "passed"}
+
+    monkeypatch.setattr(review_api, "run_llm_review", fake_llm_review)
+    monkeypatch.setenv("PRIVATE_MODE", "true")
+    monkeypatch.setenv("LLM_REVIEWER_REQUIRED", "true")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    app.dependency_overrides[get_db] = db_override
+    try:
+        task = asyncio.run(request("POST", "/api/tasks", json={"task_id": "QC_AUTO_LLM_TASK", "task_name": "QC自动Reviewer测试任务"}))
+        assert task.status_code == 201, task.text
+        imported = asyncio.run(request(
+            "POST",
+            "/api/regulations/import",
+            files={"file": ("测试复核办法（2026年版）.pdf", build_review_fixture_pdf(), "application/pdf")},
+            data={"task_id": "QC_AUTO_LLM_TASK", "version_label": "2026年版"},
+        ))
+        assert imported.status_code == 201, imported.text
+        interpreted = asyncio.run(request(
+            "POST",
+            "/api/tasks/QC_AUTO_LLM_TASK/interpret",
+            json={"institution_type": "商业银行", "business_scope": ["复核"], "region": "中国境内"},
+        ))
+        assert interpreted.status_code == 200, interpreted.text
+
+        qc = asyncio.run(request("POST", "/api/tasks/QC_AUTO_LLM_TASK/review/qc"))
+        assert qc.status_code == 200, qc.text
+        assert len(calls) == 1
+        assert calls[0][0] == "QC_AUTO_LLM_TASK"
+        assert calls[0][1].startswith("USR_PRIVATE_")
+        assert "LLM_REVIEW_NOT_RUN" not in {item["code"] for item in qc.json()["blockers"]}
     finally:
         app.dependency_overrides.clear()
         get_settings.cache_clear()
