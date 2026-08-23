@@ -57,6 +57,14 @@ def _parse_json_content(content: Any) -> dict[str, Any]:
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text
         text = text.rsplit("```", 1)[0].strip()
+    # Some compatible endpoints wrap an otherwise valid JSON object in a
+    # short explanation even when response_format=json_object is requested.
+    # Extract only the outer object; anything still invalid must remain a
+    # failed review rather than being repaired into an invented conclusion.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
     parsed = json.loads(text)
     if not isinstance(parsed, dict):
         raise ValueError("LLM Reviewer 返回的不是 JSON 对象")
@@ -73,6 +81,7 @@ def _call_openai_compatible(prompt: str) -> dict[str, Any]:
             {
                 "model": settings.llm_model,
                 "temperature": 0,
+                "max_tokens": 2048,
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": "你是外规解读质量复核员。只检查原文、证据、数字和表述一致性，不补充原文没有的法律事实。"},
@@ -118,8 +127,9 @@ def run_llm_review(db: Session, task: Task, *, actor_id: str) -> dict[str, Any]:
     prompt = json.dumps(
         {
             "task_id": task.task_id,
-            "review_scope": "检查监管原文片段是否被准确引用、结构化数字是否一致、内容块是否有证据、解读是否存在超出原文的确定性表述。注意：Requirement 是原子化拆解，Requirement.source_text 可以是 Evidence.source_text 的连续子串；同一条款的 Evidence 可以覆盖比单个 Requirement 更大的完整原文。只有在片段不属于对应证据、关键事实/数字不一致、证据缺失或解读超出原文时才报告问题，不要仅因证据文本更长或拆解粒度不同而报告 SOURCE_TEXT_MISMATCH。若你确认 source_text 与证据一致、或明确写出 source_text 是证据的连续子串，则不要生成任何 SOURCE_TEXT_MISMATCH；若同时发现 action、数字或其他结构化字段错误，应只报告对应字段错误，不能把已一致的 source_text 作为发现。每条 finding 必须描述一个已确认的问题，禁止输出‘符合要求’‘两者一致’‘未发现问题’等自相矛盾的发现。",
+            "review_scope": "检查监管原文片段是否被准确引用、结构化数字是否一致、内容块是否有证据、解读是否存在超出原文的确定性表述。注意：Requirement 是原子化拆解，Requirement.source_text 可以是 Evidence.source_text 的连续子串；同一条款的 Evidence 可以覆盖比单个 Requirement 更大的完整原文。只有在片段不属于对应证据、关键事实/数字不一致、证据缺失或解读超出原文时才报告问题，不要仅因证据文本更长或拆解粒度不同而报告 SOURCE_TEXT_MISMATCH。若你确认 source_text 与证据一致、或明确写出 source_text 是证据的连续子串，则不要生成任何 SOURCE_TEXT_MISMATCH；若同时发现 action、数字或其他结构化字段错误，应只报告对应字段错误，不能把已一致的 source_text 作为发现。每条 finding 必须描述一个已确认的问题，禁止输出‘符合要求’‘两者一致’‘未发现问题’等自相矛盾的发现。最多输出 20 条 finding；每条 message 不超过 120 个中文字符，不要复制 source_text 或 evidence 原文，不要在 message 中使用未转义的双引号。",
             "data": _review_payload(objects),
+            "output_instructions": "只返回一个紧凑、合法的 JSON 对象，不要 Markdown 代码块，不要前后解释。若没有已确认问题，返回 findings=[]。",
             "output_schema": {
                 "overall_status": "pass | needs_revision | fail",
                 "findings": [{"code": "string", "severity": "info | warning | blocker", "message": "string", "target_type": "string", "target_id": "string"}],
