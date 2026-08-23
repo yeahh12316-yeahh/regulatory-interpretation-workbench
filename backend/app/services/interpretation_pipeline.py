@@ -48,7 +48,8 @@ _NUMERIC_PATTERN = re.compile(
 _TIME_PATTERN = re.compile(r"(?:\d+(?:\.\d+)?|[一二三四五六七八九十百千万零〇]+)(?:年|个月|月|日|天|小时)(?:以上|以下|内|以内|起|后|前)?")
 _FREQUENCY_PATTERN = re.compile(r"(?:每(?:年|月|季度|日)|定期|不定期|及时|持续|按期|至少每[^，。；]{0,12})")
 _NORMATIVE_TERMS = tuple(dict.fromkeys([term for term, _ in _MODAL_RULES] + ["宜", "不应", "严禁", "禁止", "按规定", "参照执行", "负责", "及时"]))
-_ACTION_VERBS = ("建立", "健全", "完善", "履行", "报送", "报告", "出具", "发现", "实现", "维护", "加强", "分析", "形成", "做好", "制定", "进行", "明确", "实行", "承担", "完成", "采取", "实施", "提供", "获取", "审计", "追究", "审批", "施行", "废止", "生效", "替代", "取代", "修订")
+_ACTION_VERBS = ("建立", "健全", "完善", "履行", "报送", "报告", "出具", "发现", "实现", "维护", "加强", "分析", "形成", "做好", "制定", "进行", "明确", "实行", "承担", "完成", "采取", "实施", "提供", "获取", "提请", "审计", "追究", "审批", "确认", "说明", "施行", "废止", "生效", "替代", "取代", "修订")
+_SCOPE_ACTIONS = ("适用于", "适用")
 
 
 def _now() -> str:
@@ -63,8 +64,33 @@ def _split_sentences(text: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[。；;])", text) if part.strip()]
 
 
+def _modal_is_standalone(text: str, start: int, keyword: str) -> bool:
+    """Reject modal-looking substrings embedded in ordinary Chinese words."""
+    end = start + len(keyword)
+    previous = text[start - 1] if start else ""
+    following = text[end] if end < len(text) else ""
+    if keyword == "要" and (previous == "必" or following == "求"):
+        return False
+    if keyword == "有权" and following == "人":
+        return False
+    if keyword == "可" and following in {"能", "恢"}:
+        return False
+    if keyword == "应" and following in {"该", "有"}:
+        return False
+    return True
+
+
+def _modal_matches(text: str) -> list[tuple[int, str, str]]:
+    matches: list[tuple[int, str, str]] = []
+    for keyword, rule_type in _MODAL_RULES:
+        for match in re.finditer(re.escape(keyword), text):
+            if _modal_is_standalone(text, match.start(), keyword):
+                matches.append((match.start(), keyword, rule_type))
+    return matches
+
+
 def _first_modal(text: str) -> tuple[int, str, str] | None:
-    matches = [(text.find(keyword), keyword, rule_type) for keyword, rule_type in _MODAL_RULES if text.find(keyword) >= 0]
+    matches = _modal_matches(text)
     if not matches:
         return None
     return min(matches, key=lambda item: (item[0], -len(item[1])))
@@ -153,14 +179,59 @@ def _extract_numbers(text: str) -> list[dict[str, Any]]:
     return values
 
 
+def _action_is_usable(text: str, start: int, verb: str) -> bool:
+    end = start + len(verb)
+    following = text[end:].lstrip(" \t\r\n")
+    if following.startswith("的"):
+        return False
+    if verb == "负责" and following.startswith("人"):
+        return False
+    if verb == "进行" and re.match(r"(?:定期|不定期|相关|专项)?(?:审计|说明|审查|检查|核查)", following):
+        return False
+    return True
+
+
+def _explicit_action_matches(text: str) -> list[tuple[int, str]]:
+    candidates: list[tuple[int, str]] = []
+    for verb in (*_SCOPE_ACTIONS, *_ACTION_VERBS, "负责"):
+        for match in re.finditer(re.escape(verb), text):
+            if _action_is_usable(text, match.start(), verb):
+                candidates.append((match.start(), verb))
+    return candidates
+
+
+def _first_explicit_action(text: str) -> tuple[int, str] | None:
+    candidates = _explicit_action_matches(text)
+    condition_markers = list(re.finditer(r"(?:之后|以后|后|时)[，,]", text))
+    if condition_markers:
+        boundary = condition_markers[-1].end()
+        after_condition = [candidate for candidate in candidates if candidate[0] >= boundary]
+        if after_condition:
+            candidates = after_condition
+    return min(candidates, key=lambda item: (item[0], -len(item[1]))) if candidates else None
+
+
+def _is_condition_only(segment: str) -> bool:
+    stripped = segment.strip(" ，,：:;")
+    return bool(re.match(r"^(经|在|如|当|若|如果|符合|对于|无法)[^。；;]{0,160}(之后|以后|后|时|情况下)$", stripped))
+
+
+def _is_navigation_or_footer(segment: str) -> bool:
+    return any(marker in segment for marker in ("上一篇", "下一篇", "相关链接", "front/detail.action", "纪检举报", "官方微信"))
+
+
 def _split_compound_segment(segment: str) -> list[str]:
-    modal_positions = [match.start() for term, _ in _MODAL_RULES for match in re.finditer(re.escape(term), segment)]
+    modal_positions = [position for position, _, _ in _modal_matches(segment)]
     modal_positions = sorted(set(modal_positions))
+    material_positions = {
+        match.start()
+        for match in re.finditer(r"(?:对借款人|债权和股权经办)", segment)
+    }
     first_modal = _first_modal(segment)
-    verb_positions = [match.start() for verb in _ACTION_VERBS for match in re.finditer(re.escape(verb), segment)]
-    verb_positions = sorted(set(verb_positions))
+    verb_positions = sorted(set(position for position, _ in _explicit_action_matches(segment)))
     first_verb = next((position for position in verb_positions if not first_modal or position > first_modal[0] + len(first_modal[1])), None)
     split_candidates = modal_positions[1:]
+    split_candidates.extend(material_positions)
     if first_verb is not None:
         split_candidates.extend(position for position in verb_positions if position > first_verb)
     split_candidates = sorted(set(split_candidates))
@@ -171,7 +242,7 @@ def _split_compound_segment(segment: str) -> list[str]:
     for position in split_candidates:
         separator = max(segment.rfind("，", start, position), segment.rfind(",", start, position))
         prefix = segment[start:separator] if separator >= start else ""
-        if separator > start and _first_modal(prefix) is not None:
+        if separator > start and (_first_modal(prefix) is not None or position in material_positions):
             chunks.append(segment[start:separator].strip(" ，,"))
             start = separator + 1
     chunks.append(segment[start:].strip(" ，,"))
@@ -181,11 +252,13 @@ def _split_compound_segment(segment: str) -> list[str]:
 def _extract_requirement(article: Article, segment: str, index: int, *, subject_hint: str | None = None) -> dict[str, Any]:
     modal = _first_modal(segment)
     if modal is None:
-        explicit_action = next((verb for verb in _ACTION_VERBS if verb in segment), None)
+        explicit_action_match = _first_explicit_action(segment)
+        explicit_action = explicit_action_match[1] if explicit_action_match else None
         rule_type = "SCOPE" if any(keyword in segment for keyword in ("适用", "适用于", "范围")) else ("OBLIGATION" if explicit_action else "OTHER")
         subject = subject_hint or "本条规定的责任主体"
         action = explicit_action
-        object_text = segment[segment.find(explicit_action) + len(explicit_action) :].strip(" ：:，,。；;") if explicit_action else segment
+        action_position = explicit_action_match[0] if explicit_action_match else -1
+        object_text = segment[action_position + len(explicit_action) :].strip(" ：:，,。；;") if explicit_action else segment
     else:
         position, keyword, rule_type = modal
         before = re.split(r"[，。；;]", segment[:position])[-1].strip()
@@ -245,13 +318,26 @@ def extract_requirements(article: Article) -> list[dict[str, Any]]:
     segments = _split_sentences(article.original_text)
     extracted: list[dict[str, Any]] = []
     for segment in segments:
-        if _first_modal(segment) or any(keyword in segment for keyword in ("适用于", "适用范围", "定义", "不得", "应当", "必须", "参照执行", "负责", "施行", "废止", "生效", "替代", "取代")):
+        if _is_condition_only(segment) or _is_navigation_or_footer(segment):
+            continue
+        if _first_modal(segment) or _first_explicit_action(segment) or any(keyword in segment for keyword in ("适用于", "适用范围", "定义", "不得", "应当", "必须", "参照执行", "负责", "施行", "废止", "生效", "替代", "取代")):
             subject_hint = None
             first_modal = _first_modal(segment)
             if first_modal:
                 subject_hint = segment[: first_modal[0]].strip(" ，,：:") or None
             for atomic_segment in _split_compound_segment(segment):
-                extracted.append(_extract_requirement(article, atomic_segment, len(extracted) + 1, subject_hint=subject_hint))
+                item = _extract_requirement(article, atomic_segment, len(extracted) + 1, subject_hint=subject_hint)
+                if first_modal and atomic_segment.lstrip().startswith(("对借款人", "债权和股权经办")):
+                    item["action"] = first_modal[1]
+                    item["rule_type"] = first_modal[2]
+                    item["object"] = atomic_segment.strip(" ：:，,。；;")
+                    item["confidence"] = 0.82
+                    item["structured_data"]["modal_keyword"] = first_modal[1]
+                    item["structured_data"]["action_strength"] = first_modal[1]
+                    item["structured_data"]["action_strength_level"] = _action_strength_level(first_modal[1])
+                    item["structured_data"]["action_category"] = _action_category(first_modal[1], item["object"])
+                    item["structured_data"]["plain_text_summary"] = f"{item['subject']}{first_modal[1]}{item['object'] or ''}"[:120]
+                extracted.append(item)
     return extracted
 
 
