@@ -11,7 +11,11 @@ def sync_workflow_s5_node(workflow: Any, stage: dict[str, Any]) -> None:
     if node is None:
         return
 
-    stage_status = stage.get("stage_status")
+    # The comparison API persists the stage as {status, version, output},
+    # while the pure comparison service returns {stage_status, output}.
+    # Accept both shapes so the durable Workflow view cannot remain blocked
+    # after a successful S5 comparison.
+    stage_status = stage.get("stage_status", stage.get("status"))
     node.status = "completed" if stage_status == "completed" else ("skipped" if stage_status == "skipped" else "blocked")
     node.progress = 100 if node.status in {"completed", "skipped"} else 0
     node.completed_at = datetime.now(timezone.utc) if node.status in {"completed", "skipped"} else None
