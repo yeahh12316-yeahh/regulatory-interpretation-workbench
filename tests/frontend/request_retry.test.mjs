@@ -22,6 +22,7 @@ test('allows Render cold start and PDF parsing longer than ordinary API reads', 
   assert.equal(requestTimeoutMs({ path: '/ready', phase: 'readiness' }), 45000)
   assert.equal(requestTimeoutMs({ path: '/regulations/import', method: 'POST' }), 180000)
   assert.equal(requestTimeoutMs({ path: '/tasks/TASK_1/review/llm', method: 'POST' }), 180000)
+  assert.equal(requestTimeoutMs({ path: '/tasks/TASK_1/review/qc', method: 'POST' }), 180000)
   assert.equal(requestTimeoutMs({ path: '/tasks/TASK_1' }), 30000)
 })
 
