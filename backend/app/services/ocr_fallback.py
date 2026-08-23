@@ -21,6 +21,10 @@ class OCRUnavailableError(RuntimeError):
     """Raised when the host cannot execute the configured OCR fallback."""
 
 
+OCR_RENDER_DPI = 150
+OCR_MAX_WORKERS = 1
+
+
 def extract_ocr_pages(
     path: str | Path,
     page_numbers: list[int],
@@ -70,7 +74,7 @@ def extract_ocr_pages(
                         str(page_number),
                         "-png",
                         "-r",
-                        "200",
+                        str(OCR_RENDER_DPI),
                         str(path),
                         str(prefix),
                     ],
@@ -101,7 +105,7 @@ def extract_ocr_pages(
         # worker count bounded so a public upload does not spend minutes
         # processing scanned pages serially, while preserving deterministic
         # page-numbered evidence after collection.
-        worker_count = min(2, len(unique_pages))
+        worker_count = min(OCR_MAX_WORKERS, len(unique_pages))
         with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="regulation-ocr") as executor:
             futures = [executor.submit(extract_page, page_number) for page_number in unique_pages]
             for future in as_completed(futures):
