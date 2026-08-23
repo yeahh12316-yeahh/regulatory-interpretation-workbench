@@ -1385,7 +1385,6 @@ function ClauseInterpretation({ onEvidence, pipelineResult }) {
         {articleInterpretations.map((item) => <article className="interpretation-card" key={item.interpretation_id}>
           <div className="interpretation-card-head"><strong>{item.article_no || item.article_id}</strong><StatusTag tone="review">待人工复核</StatusTag></div>
           <h3>{item.summary}</h3>
-          <p>{item.interpretation}</p>
           <div className="content-blocks">{item.content_blocks.map((block) => <div key={block.label} className={`content-block content-${block.label.toLowerCase()}`}><span>{block.label}</span><p>{block.text}</p></div>)}</div>
           <button className="link-button" onClick={() => onEvidence(item.content_blocks?.[0]?.evidence_ids?.[0])}>查看原文证据 <ExternalLink size={13} /></button>
         </article>)}
