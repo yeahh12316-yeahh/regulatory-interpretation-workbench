@@ -68,6 +68,22 @@ def _objects_or_404(db: Session, task: Task):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _run_required_llm_review_if_missing(db: Session, task: Task, *, actor_id: str) -> None:
+    """Make the QC action safe to use as the public one-click review flow.
+
+    A required model review is part of the release gate. If the operator clicks
+    QC before the separate Reviewer button, run it first instead of creating a
+    misleading ``LLM_REVIEW_NOT_RUN`` blocker. Existing Reviewer results are
+    preserved and never re-run implicitly.
+    """
+    required = bool((task.processing_config or {}).get("llm_reviewer_required", get_settings().llm_reviewer_required))
+    if not required:
+        return
+    objects = _objects_or_404(db, task)
+    if objects.get("llm_review") is None:
+        run_llm_review(db, task, actor_id=actor_id)
+
+
 def _review_read(db: Session, task: Task) -> ReviewRead:
     objects = _objects_or_404(db, task)
     return ReviewRead(
@@ -333,6 +349,7 @@ def run_review_qc(
 ) -> QCReportRead:
     task = _get_task(db, task_id, context)
     try:
+        _run_required_llm_review_if_missing(db, task, actor_id=context.user.user_id)
         result = run_quality_check(db, task, actor_id=context.user.user_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
