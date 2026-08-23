@@ -32,7 +32,7 @@ export function retryDelay(attempt) {
 export function requestTimeoutMs({ path = '', method = 'GET', phase = 'request' } = {}) {
   if (phase === 'readiness' || path === '/ready') return 45_000
   if (path === '/regulations/import' || (method || '').toUpperCase() === 'POST' && path.includes('/regulations/import')) return 180_000
-  if (path.includes('/review/llm')) return 180_000
+  if (path.includes('/review/llm') || path.includes('/review/qc')) return 180_000
   return 30_000
 }
 
